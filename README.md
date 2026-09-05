@@ -5,7 +5,7 @@ FlatLand 是一个基于小说《平面国》的故事可视化项目。我们�
 [在线体验](https://titianharold.github.io/FlatLand/) · [GitHub 仓库](https://github.com/TitianHarold/FlatLand)
 
 - **故事模式**：浏览和播放故事，自由切换观察视角。
-- **场景工作台**：调整镜头、光线、配色等参数，实时查看画面效果。
+- **游乐场**：调整镜头、光线、配色等参数，实时查看画面效果；设置独立保存，不影响故事。
 
 ## 部署与创作
 

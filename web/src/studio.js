@@ -156,7 +156,7 @@ function loadScene(id){
   document.querySelector('.studio-shell').classList.toggle('lab-active',lab);
   document.querySelector('.inspector').hidden=lab;
   for(const el of [$('scene-controls'),$('reset-scene'),document.querySelector('.canvas-zoom')])el.hidden=lab;
-  document.title=`平面国 · ${config.title} · 工作台`;
+  document.title=`平面国 · ${config.title} · 游乐场`;
   frame.title=`${config.title}实时预览`;
   $('loading').hidden=false;$('loading').querySelector('strong').textContent='正在准备场景';$('retry').hidden=true;
   document.querySelectorAll('[data-scene]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.scene===id));

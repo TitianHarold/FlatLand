@@ -94,7 +94,8 @@ window.addEventListener('message',async function ready(event){
     assert((await readRow(.5,true)).every((v,i)=>v===idleRow[i]),'强制重算和复用缓存的真实画面像素完全一致');
     const {cameraFov,cameraAspect}=api.snapshot();
     assert(api.snapshot().observerVisible,'完全俯视时保留观察者');
-    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3&&api.snapshot().stretch===0,'实体与墙的基础高度缩为原来的三分之一');
+    assert(api.snapshot().shapeHeight===.05/3&&api.snapshot().geometryHeight===0&&api.snapshot().wallHeight===0&&api.snapshot().stretch===0,'保留三分之一的基础高度，绝对俯视时实体与墙显示为零厚度');
+    assert(api.snapshot().cameraDirection.every((n,i)=>Math.abs(n-[0,0,-1][i])<1e-8),'绝对俯视镜头垂直朝下');
     assert(!frame.contentDocument.getElementById('shape-height'),'独立场景也去掉基础高度调节');
     assert(api.snapshot().renderPoints===0,'没有粒子渲染');
     const preview=frame.contentDocument.getElementById('sight-preview'),minimap=frame.contentDocument.getElementById('minimap-panel');
@@ -123,7 +124,7 @@ window.addEventListener('message',async function ready(event){
     assert(preview.hidden&&!minimap.hidden,'居民视角切回位置地图，不叠加视野小窗');
     assert(api.snapshot().cameraFov===cameraFov&&api.snapshot().cameraAspect===cameraAspect,'下降到底保持同一透视镜头，不在末段拉伸');
     assert(api.snapshot().lineOnly&&api.snapshot().stretch===0,'下降终点自然停留在一维，没有自动拉伸');
-    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3,'下降只移动相机，形状保持设定的基础高度');
+    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3,'到达居民视角后，同一批实体与墙恢复设定的基础高度');
     const residentCanvas=frame.contentDocument.querySelector('#scene canvas');
     assert(api.snapshot().windowBlend<1,'镜头先到 0°，窗口随后展开');
     await until(()=>api.snapshot().windowBlend===1);

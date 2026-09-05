@@ -1,6 +1,8 @@
-import {Character, characterTypes, RAPIER} from './characters.js';
+import {Character, characterTypes, getCharacterType, RAPIER} from './characters.js';
 import {MASK_FIELD,makeCrowd} from './study-scene.js';
 import {findRoute} from './navigation.js';
+import {sampleStory} from './story-script.js';
+import {createRandom} from './random.js';
 
 // The supplied plan maps 35 drawing pixels to one body length in world XY.
 export const point = (x, y) => ({ x: (x - 335) / 35, y: (270 - y) / 35 });
@@ -27,7 +29,7 @@ let initialized;
 export async function createSimulation({layout='house',wandering=layout==='house',pathfinding=false,residentKilling=false,scripted=false}={}) {
   initialized ??= RAPIER.init();
   await initialized;
-  const world = new RAPIER.World({x:0,y:0});
+  let world = new RAPIER.World({x:0,y:0});
   world.timestep = 1/60;
   world.integrationParameters.numSolverIterations = 8;
   world.integrationParameters.maxCcdSubsteps = 4;
@@ -39,8 +41,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   const bounds=stars?{x:3000,y:3000}:parade?{x:58,y:38}:maskTest?{x:fieldRadius,y:fieldRadius}:{x:12,y:10};
   const home=parade?{x:0,y:-35}:(maskTest||stars)?{x:0,y:0}:point(319,302);
   const walkers=new Map();
-  let walkSeed=731;
-  const walkRandom=()=>{walkSeed=(Math.imul(walkSeed,1664525)+1013904223)>>>0;return walkSeed/4294967296;};
+  const walkRandom=createRandom(731);
   let nextId=0, aim=null, walkTarget=null, blockedTime=0;
   let route=[],routeSearch=null,routeCheck=0,walkStatus='idle';
   for (const [x1,y1,x2,y2,kind] of layout==='house'?wallData:[]) {
@@ -52,7 +53,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   // The studio chooses instances and poses. Character owns shape, mass,
   // movement, interactions and lifecycle; no parallel character definitions.
   function addEntity({x,y,type='regular-5',size=1,angle=0,name,role='resident',shape}) {
-    const e=new Character(nextId++,characterTypes.find(t=>t.id===type),{size,name,...(shape?{shape}:{})}).attach(world,{x,y,angle});
+    const e=new Character(nextId++,getCharacterType(type),{size,name,...(shape?{shape}:{})}).attach(world,{x,y,angle});
     e.role=role;entities.push(e);byCollider.set(e.collider.handle,e);
     if(['resident','crowd','sample'].includes(role)){
       e.setInteraction(residentKilling?'kill':'touch');
@@ -90,6 +91,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   if(!scripted&&(maskTest||stars))fieldPopulation(stars?240:996);
   const scriptActors=new Map();
+  let scriptBaseline,scriptAct=-1,scriptTick=0,scriptTarget;
   function setScriptActors(actors,observer,paintStyle){
     if(!scripted)throw new Error('脚本角色仅可用于剧场世界');
     aimAt(null);setWandering(false);
@@ -104,17 +106,93 @@ export async function createSimulation({layout='house',wandering=layout==='house
       e.storyBasePaint={color:e.color,edgeColors:[...e.edgeColors]};
       e.storyId=actor.id;e.setInteraction('touch');e.body.setEnabled(false);scriptActors.set(actor.id,e);
     }
+    world.step(events);events.clear();
+    scriptBaseline=world.takeSnapshot();scriptAct=-1;scriptTarget=null;
   }
-  function applyScriptFrame(frame){
+  function applyScriptFrame(frame,{poses=true}={}){
     if(!scripted)throw new Error('脚本帧仅可用于剧场世界');
     for(const actor of frame.actors){
       const e=scriptActors.get(actor.id);
       if(!e)throw new Error(`未知脚本角色：${actor.id}`);
-      e.body.setTranslation({x:actor.position[0],y:actor.position[1]},true);
-      e.body.setRotation(actor.angle*Math.PI/180,true);
+      if(poses){
+        e.body.setTranslation({x:actor.position[0],y:actor.position[1]},true);
+        e.body.setRotation(actor.angle*Math.PI/180,true);e.body.setEnabled(false);
+        e.state='alive';e.deathCause=null;e.storyDeathAt=undefined;
+      }
       e.storyVisible=actor.visible;e.color=actor.color??e.storyBasePaint.color;
       e.edgeColors=actor.color===undefined?[...e.storyBasePaint.edgeColors]:[actor.color];
+      // Neutral tint uses the existing optical brightness unchanged. Keep the
+      // inherited pigments so backward seeks and recolouring restore them.
+      if(actor.coloring===false){e.color='#ffffff';e.edgeColors=['#ffffff'];}
     }
+  }
+  // Fixed story-time steps use the same bodies, corner strikes and contact rules
+  // as the studio. A clean Rapier snapshot makes chapter jumps and rewinds repeatable.
+  function seekScript(story,time){
+    const frame=sampleStory(story,time),act=story.acts[frame.actIndex];
+    if(!frame.collision){scriptAct=-1;applyScriptFrame(frame);return frame;}
+    const tick=Math.floor((frame.actTime+1e-8)*60);
+    if(scriptAct!==frame.actIndex||tick<scriptTick){
+      const handles=entities.map(e=>[e,e.body.handle,e.collider.handle]);
+      world.free();world=RAPIER.World.restoreSnapshot(scriptBaseline);events.clear();
+      for(const [e,body,collider] of handles){
+        e.world=world;e.body=world.getRigidBody(body);e.collider=world.getCollider(collider);
+        e.contacts.clear();e.collisionCount=0;e.state='alive';e.deathCause=null;e.storyDeathAt=undefined;e.stop();
+      }
+      for(const wall of walls)wall.collider=world.getCollider(wall.collider.handle);
+      scriptTarget=sampleStory(story,act.start);applyScriptFrame(scriptTarget);
+      for(const actor of scriptTarget.actors)scriptActors.get(actor.id).body.setEnabled(actor.visible);
+      scriptAct=frame.actIndex;scriptTick=0;
+    }
+    while(scriptTick<tick){
+      const nextTime=act.start+(scriptTick+1)/60;
+      // The last step belongs to this act, even at its exact end.
+      const next=sampleStory(story,Math.min(nextTime,act.start+act.duration-1e-8)),initiators=new Set();
+      for(let i=0;i<next.actors.length;i++){
+        const target=next.actors[i],previous=scriptTarget.actors[i],e=scriptActors.get(target.id);
+        e.storyVisible=target.visible;
+        if(!target.visible||e.state==='dead'){e.body.setEnabled(false);continue;}
+        if(!previous.visible){
+          e.body.setTranslation({x:target.position[0],y:target.position[1]},true);
+          e.body.setRotation(target.angle*Math.PI/180,true);e.body.setEnabled(true);
+        }
+        e.setInteraction(target.interaction);
+        const p=e.body.translation(),angle=e.body.rotation(),c=Math.cos(angle),s=Math.sin(angle);
+        const vx=(target.position[0]-previous.position[0])*60+(target.position[0]-p.x)*8;
+        const vy=(target.position[1]-previous.position[1])*60+(target.position[1]-p.y)*8;
+        const focus=target.face?scriptActors.get(target.face).body.translation():null;
+        const desired=focus?Math.atan2(focus.y-p.y,focus.x-p.x):target.angle*Math.PI/180;
+        const error=Math.atan2(Math.sin(desired-angle),Math.cos(desired-angle));
+        const angular=Math.max(-8,Math.min(8,(focus?0:(target.angle-previous.angle)*Math.PI/3)+error*8));
+        const speed=Math.hypot(vx,vy),scale=speed||1;
+        e.move({forward:(c*vx+s*vy)/scale,side:(-s*vx+c*vy)/scale,speed:Math.min(6,speed),turn:angular/1.5});
+        if(e.drive.x||e.drive.y||e.drive.angular)initiators.add(e);
+      }
+      world.step(events);dispatchContacts(initiators);
+      for(const e of scriptActors.values())if(e.state==='dead'&&e.storyDeathAt===undefined)e.storyDeathAt=nextTime;
+      scriptTarget=next;scriptTick++;
+    }
+    for(const actor of frame.actors){
+      const e=scriptActors.get(actor.id),p=e.body.translation();
+      actor.position=[p.x,p.y];actor.angle=e.body.rotation()*180/Math.PI;
+      actor.state=e.state;actor.deathAt=e.storyDeathAt;actor.collisions=e.collisionCount;
+    }
+    if(act.observer?.follow){
+      const actor=frame.actors.find(actor=>actor.id===act.observer.follow);
+      frame.observer={position:actor.position.map((v,i)=>v+act.observer.offset[i]),angle:act.observer.angle??actor.angle};
+    }
+    if(frame.observer){
+      const [x,y]=frame.observer.position;
+      if(occupied({x,y},.12)){
+        // A neighbour can enter a followed camera's offset. Keep the same view
+        // direction and choose the nearest clear point around the intended eye.
+        search:for(let r=.2;r<=1.6;r+=.2)for(let i=0;i<16;i++){
+          const p={x:x+Math.cos(i*Math.PI/8)*r,y:y+Math.sin(i*Math.PI/8)*r};
+          if(!occupied(p,.12)){frame.observer.position=[p.x,p.y];break search;}
+        }
+      }
+    }
+    applyScriptFrame(frame,{poses:false});return frame;
   }
   function occupied(pos, radius=.33, exclude=null) {
     let hit=false;
@@ -179,7 +257,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
       return entities.filter(e=>e.state!=='dead').length;
     }
     // Reproducible rejection placement: no resident is born intersecting a neighbour.
-    let seed=173;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    const random=createRandom(173);
     world.step(events);events.clear();
     let remaining=count-entities.filter(e=>e.state!=='dead').length;
     for(let attempts=0;remaining>0&&attempts<20000;attempts++) {
@@ -318,6 +396,6 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   world.step(events);events.clear();
   if(parade&&!scripted)population(1000);
-  return {world,events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,setScriptActors,applyScriptFrame,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
+  return {get world(){return world;},events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,setScriptActors,applyScriptFrame,seekScript,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
 }
 export {RAPIER};

@@ -1,7 +1,7 @@
 import './storyboard.css';
 import {parseStory} from './story-script.js';
 import {stories} from './story-catalog.js';
-import {defaults,storageKey,readPreset,sharedSettings} from './studio-preset.js';
+import {readPreset,sharedSettings} from './studio-preset.js';
 import {bindPromptCopy} from './copy-prompt.js';
 
 const $=id=>document.getElementById(id),theatre=$('theatre');
@@ -63,7 +63,7 @@ function loadText(text,label){
     for(const [className,text] of [['act-index',String(i+1).padStart(2,'0')],['act-name',act.title],['act-duration',clock(act.duration)]]){
       const span=document.createElement('span');span.className=className;span.textContent=text;button.append(span);
     }
-    button.onclick=()=>{setPlaying(false);seek(act.start);setPlaying(false);};item.append(button);$('act-list').append(item);
+    button.onclick=()=>{seek(act.start);setPlaying(true);};item.append(button);$('act-list').append(item);
   });
   $('play').disabled=$('replay').disabled=$('forward').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
@@ -87,10 +87,8 @@ addEventListener('message',event=>{
   try{
     api=frame.contentWindow.flatlandStudio;
     if(!api?.story)throw new Error('当前世界不支持剧本播放。');
-    let preset=structuredClone(defaults);
-    try{const saved=localStorage.getItem(storageKey);if(saved)preset=readPreset(JSON.parse(saved));}
-    catch{$('view-status').textContent='保存的工作台配置不可用，已使用默认值。';}
-    if(storyPreset!==undefined)preset=readPreset(storyPreset,preset);
+    // Reuse parameter validation, never the playground's saved configuration.
+    const preset=readPreset(storyPreset??{version:1,state:{}});
     api.configure(sharedSettings(preset.shared));
     for(const [id,value] of [['finish','clear'],['contour',true],['coloring',preset.shared.coloring],['paint-style',preset.shared.paintStyle],['field-angle',preset.view.fieldAngle],['projection',preset.view.projection],['resident-window',preset.view.windowHeight],['show-range',preset.view.showRange],['map-lock',preset.view.mapLocked]])api.set(id,value);
     api.configure({display:preset.view.display});

@@ -18,13 +18,13 @@ export function sharedSettings(shared){return {
   attenuationMode:'mask',attenuationFloor:0,attenuationCurve:shared.attenuationCurve,paintStyle:shared.paintStyle,customPaint:shared.customPaint,paintMode:shared.paintMode,wallColor:shared.wallColor,
 };}
 
-// Read only known, bounded configuration fields from the browser's saved preset.
-export function readPreset(saved,base=defaults){
+// Validate one configuration. Missing fields use built-in defaults only.
+export function readPreset(saved){
   saved=structuredClone(saved);
   if(saved?.state?.currentScene==='optics')saved.state.currentScene='stars';
   if(saved?.version!==1||!saved.state||typeof saved.state!=='object'||Array.isArray(saved.state))throw new Error('Invalid preset');
-  const result=structuredClone(base),source=saved.state;
-  const currentScene=Object.hasOwn(source,'currentScene')?source.currentScene:base.currentScene;
+  const result=structuredClone(defaults),source=saved.state;
+  const currentScene=Object.hasOwn(source,'currentScene')?source.currentScene:defaults.currentScene;
   if(!['house','parade','stars','mask','characters'].includes(currentScene))throw new Error('Invalid scene');
   for(const group of ['shared','view','behavior'])if(Object.hasOwn(source,group)&&(!source[group]||typeof source[group]!=='object'||Array.isArray(source[group])))throw new Error('Invalid configuration group');
   // Older presets chose a combined mode under one master switch.
@@ -37,15 +37,15 @@ export function readPreset(saved,base=defaults){
   const enums={scatterCurve:['smooth','linear','quadratic','exponential','logarithmic'],detailStyle:['soft','velvet','sharp'],paintStyle:Object.keys(PAINT_STYLES),paintMode:['solid','mixed'],attenuationCurve:['smooth','linear','exponential','quadratic','inverse-square'],display:['expanded','line'],projection:['equidistant','perspective']};
   const limits={exposure:[1.5,96],detailGain:[0,3],scatterDistance:[2,8192],residentEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],houseEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],attenuationDistance:[2,8192],dimension:[0,100],fieldAngle:[60,160],windowHeight:[1,100]};
   // Older presets kept behavior per scene. Adopt the current scene's values once.
-  if(!source.behavior&&source[currentScene])source.behavior={...base.behavior,...source[currentScene]};
+  if(!source.behavior&&source[currentScene])source.behavior=source[currentScene];
   if(source.shared?.wallColor===undefined&&source.shared?.paintStyle==='custom'&&source.shared.customPaint?.wall)source.shared.wallColor=source.shared.customPaint.wall;
   for(const group of ['shared','view','behavior']){
     for(const [key,defaultValue] of Object.entries(defaults[group])){
-      let value=Object.hasOwn(source[group]??{},key)?source[group][key]:base[group][key];
+      let value=Object.hasOwn(source[group]??{},key)?source[group][key]:defaultValue;
       if(key==='customPaint'){setCustomPaintStyle(value);value={colors:[...PAINT_STYLES.custom.colors],...(PAINT_STYLES.custom.pattern?{pattern:PAINT_STYLES.custom.pattern}:{})};}
       if(key==='wallColor'&&!/^#[0-9a-f]{6}$/i.test(value))throw new Error('Invalid wall colour');
       // Preserve the old appearance once, then save the two distances separately.
-      if(key==='scatterDistance'&&source.shared?.scatterDistance===undefined&&source.shared?.visionEffect!==undefined)value=source.shared.attenuationDistance??base.shared.scatterDistance;
+      if(key==='scatterDistance'&&source.shared?.scatterDistance===undefined&&source.shared?.visionEffect!==undefined)value=source.shared.attenuationDistance??defaults.shared.scatterDistance;
       if(['attenuationDistance','scatterDistance'].includes(key)&&value===1)value=2;
       if(key==='detailGain'&&Number.isInteger(value)&&value>=-3&&value<0)value=0;
       if(['residentEmission','houseEmission','exposure'].includes(key)&&typeof value==='number'&&Number.isFinite(value)&&value>=0){

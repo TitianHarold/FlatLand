@@ -27,7 +27,7 @@ assert.deepEqual(data,JSON.parse(source));
 
 function rejects(change,pattern){const value=structuredClone(data);change(value);assert.throws(()=>compileStory(value),pattern);}
 assert.throws(()=>parseStory('{invalid'),/JSON/);
-assert.throws(()=>parseStory(' '.repeat(STORY_LIMITS.bytes+1)),/512 KB/);
+assert.throws(()=>parseStory(' '.repeat(STORY_LIMITS.bytes+1)),/4 MB/);
 rejects(d=>d.version=2,/version/);
 rejects(d=>d.actors[1].id='square',/唯一/);
 rejects(d=>d.actors[0].id='__proto__',/ID/);
@@ -47,7 +47,7 @@ rejects(d=>d.acts[0].actions.push({at:2,actor:'square',move:[0,0]}),/重叠/);
 rejects(d=>d.acts[0].actions=[{at:0,actor:'square',color:'#000000',duration:1}],/仅移动/);
 rejects(d=>d.acts[0].actions=[{at:0,actor:'square'}],/需要 move/);
 rejects(d=>d.acts=Array.from({length:7},()=>({title:'Long',duration:600})),/1 小时/);
-rejects(d=>d.actors=Array.from({length:129},(_,i)=>({...d.actors[0],id:`a${i}`})),/128/);
+rejects(d=>d.actors=Array.from({length:STORY_LIMITS.actors+1},(_,i)=>({...d.actors[0],id:`a${i}`})),/2048/);
 const minimal=compileStory({version:1,title:'静态幕',scene:'house',actors:[{id:'a',type:'woman',position:[0,0]}],acts:[{title:'空动作',duration:.1}]});
 assert.equal(minimal.actors[0].size,1);assert.equal(sampleStory(minimal,.1).actors[0].visible,true);
 const instantaneous=structuredClone(data);
@@ -109,7 +109,7 @@ const controller=(await readFile(new URL('../src/storyboard.js',import.meta.url)
 const playerHtml=await readFile(new URL('../storyboard.html',import.meta.url),'utf8');
 const cameraKeyRelease=calls=>['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE'].every(code=>calls.some(call=>call[0]===code&&call[1]===false));
 async function playerSettings(override){
-  const values={},events={},timers=new Map();let timerId=0;
+  const values={},events={},timers=new Map();let timerId=0,presetReads=0,presetWrites=0;
   const element=tag=>({tag,hidden:false,disabled:false,children:[],style:{setProperty(k,v){this[k]=v;}},classList:{classes:new Set(),add(c){this.classes.add(c);},remove(c){this.classes.delete(c);}},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];},focus(){},scrollIntoView(options){this.scrollOptions=options;},addEventListener(){},
     append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
     querySelector(){return this.heading??=element('h2');},querySelectorAll(){return this.children.flatMap(child=>child.tag==='button'?[child]:child.querySelectorAll());},
@@ -120,7 +120,7 @@ async function playerSettings(override){
   const document={getElementById:id=>elements.get(id),createElement:tag=>({...element(tag),...(tag==='iframe'?{contentWindow:{flatlandStudio:api}}:{})}),addEventListener(){}};
   const saved=JSON.stringify(preset),helpStorage=new Map();
   const sandbox={document,parseStory,stories:[],defaults,storageKey,readPreset,sharedSettings,bindPromptCopy(){},URLSearchParams,
-    location:{search:'',hostname:'localhost',origin:'http://localhost:5173'},localStorage:{getItem(key){return key===storageKey?saved:helpStorage.get(key);},setItem(key,value){helpStorage.set(key,value);}},
+    location:{search:'',hostname:'localhost',origin:'http://localhost:5173'},localStorage:{getItem(key){if(key===storageKey){presetReads++;return saved;}return helpStorage.get(key);},setItem(key,value){if(key===storageKey)presetWrites++;helpStorage.set(key,value);}},
     structuredClone,performance:{now:()=>0},setTimeout(fn,delay){timers.set(++timerId,{fn,delay});return timerId;},clearTimeout(id){timers.delete(id);},requestAnimationFrame:()=>1,cancelAnimationFrame(){},
     addEventListener:(name,fn)=>events[name]=fn,fixtureText:source,override};
   await vm.runInNewContext(`(async()=>{${controller}\nstoryPreset=override;loadText(fixtureText,'test');})()`,sandbox);
@@ -135,7 +135,7 @@ async function playerSettings(override){
   assert.equal(elements.get('view-angle').disabled,false,'The default observer allows immediate angle changes');
   events.message({...cameraPlaced,data:{type:'flatland-story-toggle-view'}});assert.equal(values.perspective,100);assert.equal(elements.get('view-angle').value,100,'Keyboard view switching keeps the visible slider in sync');
   elements.get('view-resident').onclick();assert.equal(values.perspective,100);
-  assert.equal(values.display,'expanded','Resident view never forces saved display back to line');
+  assert.equal(values.display,override?.state.view?.display??defaults.view.display,'Resident view preserves the story display setting');
   elements.get('view-angle').value=50;elements.get('view-angle').oninput();assert.equal(values.perspective,50);assert.equal(elements.get('view-angle-value').textContent,'45°');
   assert.equal(JSON.stringify(preset),saved,'The player never rewrites the saved preset');
   elements.get('play').onclick();assert.equal(elements.get('play-icon').src,'./icons/pause.svg');
@@ -147,25 +147,34 @@ async function playerSettings(override){
   events.keyup({code:'KeyW'});assert.deepEqual(keyCalls.at(-1),['KeyW',false]);
   events.blur();assert(cameraKeyRelease(keyCalls),'Leaving the player releases every held camera key');
   elements.get('upload-story').onclick();assert(elements.get('upload-prompt').value.includes('Fork'));assert(elements.get('upload-prompt').value.includes('完整 PR'));
+  elements.get('act-list').children[1].children[0].onclick();
+  assert.equal(elements.get('timeline').value,6,'A chapter click seeks to its start');
+  assert.equal(elements.get('play').title,'暂停','A chapter click immediately starts playback');
+  assert.equal(presetReads,0,'Stories never read the playground preset');
+  assert.equal(presetWrites,0,'Stories never write the playground preset');
   return values;
 }
 const adopted=await playerSettings();
-assert.equal(adopted['field-angle'],160);assert.equal(adopted['resident-window'],61);assert.equal(adopted.projection,'equidistant');assert.equal(adopted['paint-style'],'neon');
+assert.equal(adopted['field-angle'],defaults.view.fieldAngle);assert.equal(adopted['resident-window'],defaults.view.windowHeight);assert.equal(adopted.projection,defaults.view.projection);assert.equal(adopted['paint-style'],defaults.shared.paintStyle);
 const override=structuredClone(preset);override.state.view.fieldAngle=80;override.state.view.windowHeight=23;
 const overridden=await playerSettings(override);assert.equal(overridden['field-angle'],80);assert.equal(overridden['resident-window'],23);
-console.log('Story workflow: preset export/inheritance/override, palette replay, default observer controls, auto-hide, upload guidance, and dirty-story detection passed.');
+console.log('Story workflow: independent settings, no playground storage access, palette replay, default observer controls, auto-hide, upload guidance, and dirty-story detection passed.');
 
 const partial={version:1,state:{view:{fieldAngle:80},shared:{coloring:false,exposure:24}}};
-const mergedPreset=readPreset(partial,preset.state);
-assert.equal(mergedPreset.view.fieldAngle,80);assert.equal(mergedPreset.view.windowHeight,61);assert.equal(mergedPreset.view.projection,'equidistant');
-assert.equal(mergedPreset.shared.coloring,false);assert.equal(mergedPreset.shared.paintStyle,'neon');assert.equal(mergedPreset.shared.scatterEnabled,true);
+const mergedPreset=readPreset(partial);
+assert.equal(mergedPreset.view.fieldAngle,80);assert.equal(mergedPreset.view.windowHeight,defaults.view.windowHeight);assert.equal(mergedPreset.view.projection,defaults.view.projection);
+assert.equal(mergedPreset.shared.coloring,false);assert.equal(mergedPreset.shared.paintStyle,defaults.shared.paintStyle);assert.equal(mergedPreset.shared.scatterEnabled,true);
 assert.equal(mergedPreset.shared.scatterDistance,128);assert.equal(mergedPreset.shared.exposure,24);
 assert.deepEqual(partial,{version:1,state:{view:{fieldAngle:80},shared:{coloring:false,exposure:24}}},'Partial input is not mutated by migration');
-assert.throws(()=>readPreset({version:1,state:{view:{fieldAngle:null}}},preset.state),/Invalid type/);
-assert.throws(()=>readPreset({version:1,state:{shared:null}},preset.state),/Invalid configuration group/);
+assert.throws(()=>readPreset({version:1,state:{view:{fieldAngle:null}}}),/Invalid type/);
+assert.throws(()=>readPreset({version:1,state:{shared:null}}),/Invalid configuration group/);
 const partialValues=await playerSettings(partial);
-assert.equal(partialValues['field-angle'],80);assert.equal(partialValues['resident-window'],61);assert.equal(partialValues['paint-style'],'neon');assert.equal(partialValues.coloring,false);
-console.log('Partial story settings: explicit fields override; omitted fields, false flags and separate optics settings retain their intended values.');
+assert.equal(partialValues['field-angle'],80);assert.equal(partialValues['resident-window'],defaults.view.windowHeight);assert.equal(partialValues['paint-style'],defaults.shared.paintStyle);assert.equal(partialValues.coloring,false);
+const colourSettings=JSON.parse(await readFile(new URL('../stories/story-fba5ed6e-6a79-44cd-88f4-918faab57dd7/settings.json',import.meta.url),'utf8'));
+for(const group of ['shared','view'])for(const key of Object.keys(defaults[group]))assert(Object.hasOwn(colourSettings.state[group],key),`The Colour Revolution freezes its own ${group}.${key}`);
+const fixedValues=await playerSettings(colourSettings);
+assert.equal(fixedValues['paint-style'],'dufy');assert.equal(fixedValues['field-angle'],160);assert.equal(fixedValues['resident-window'],1);assert.equal(fixedValues.exposure,24);assert.equal(fixedValues.scatterDistance,128);
+console.log('Story settings: partial values use built-in defaults; the Colour Revolution freezes every visual setting and ignores the playground.');
 
 const cameraWorld=await createSimulation({layout:'parade',scripted:true});cameraWorld.setScriptActors(story.actors,story.observer);cameraWorld.applyScriptFrame(first);
 const castBefore=cameraWorld.entities.filter(e=>e.storyId).map(e=>({...e.body.translation()})),eyeBefore={...cameraWorld.player.body.translation()};
@@ -178,3 +187,130 @@ assert(Math.hypot(cameraWorld.player.body.translation().x-beforeStrafe.x,cameraW
 assert.deepEqual(cameraWorld.entities.filter(e=>e.storyId).map(e=>({...e.body.translation()})),castBefore,'Camera navigation never moves the cast');
 const stopped={...cameraWorld.player.body.translation()};for(let i=0;i<30;i++)cameraWorld.step({});assert.deepEqual({...cameraWorld.player.body.translation()},stopped,'Releasing the keys stops immediately');cameraWorld.dispose();
 console.log('Story camera: keyboard forwarding/release, free position and heading, stationary cast, and immediate stop passed.');
+
+// Colour periods and authored cameras share the same Character instances.
+const periods=compileStory({version:1,title:'Period controls',scene:'parade',actors:[
+  {id:'soldier',type:'regular-12',position:[0,0],coloring:false},
+  {id:'priest',type:'regular-32',position:[3,0],coloring:false},
+],acts:[
+  {title:'Before',duration:2,coloring:false,observer:{position:[0,-2],angle:90}},
+  {title:'Colour',duration:4,coloring:true,observer:{follow:'soldier',offset:[0,-1],angle:90},actions:[
+    {at:0,actor:'soldier',coloring:true,move:[4,0],duration:4},
+    {at:2,actor:'priest',coloring:true},{at:3,actor:'priest',coloring:false}]},
+  {title:'After',duration:2,coloring:false},
+  {title:'Inherit',duration:2},
+]});
+rejects(d=>d.actors[0].type='regular-129',/type/);
+rejects(d=>d.actors[0].type='regular-2',/type/);
+rejects(d=>d.actors[0].coloring='true',/coloring/);
+rejects(d=>d.acts[0].coloring=1,/coloring/);
+rejects(d=>d.acts[0].observer={follow:'missing'},/找不到/);
+rejects(d=>d.acts[0].observer={follow:'square',position:[0,0]},/只能选择/);
+rejects(d=>d.acts[0].observer={position:[0,0],offset:[1,0]},/偏移/);
+assert.equal(sampleStory(periods,0).coloring,false);
+assert.equal(sampleStory(periods,2).coloring,true);
+assert.equal(sampleStory(periods,6).coloring,false);
+assert.equal(sampleStory(periods,8).coloring,undefined,'An unspecified act uses the story base colouring');
+assert.deepEqual(sampleStory(periods,4).observer,{position:[2,-1],angle:90},'The observer follows the sampled actor');
+const periodWorld=await createSimulation({layout:'parade',scripted:true});periodWorld.setScriptActors(periods.actors,undefined,'neon');
+const soldier=periodWorld.entities.find(e=>e.storyId==='soldier'),priest=periodWorld.entities.find(e=>e.storyId==='priest');
+assert.equal(soldier.vertices.length,12);assert.equal(priest.vertices.length,32);
+const originalPaint=[...soldier.storyBasePaint.edgeColors];
+periodWorld.applyScriptFrame(sampleStory(periods,0));assert.deepEqual(soldier.edgeColors,['#ffffff']);
+periodWorld.applyScriptFrame(sampleStory(periods,3));assert.deepEqual(soldier.edgeColors,originalPaint);assert.deepEqual(priest.edgeColors,['#ffffff']);
+periodWorld.applyScriptFrame(sampleStory(periods,4.5));assert.deepEqual(priest.edgeColors,priest.storyBasePaint.edgeColors);
+periodWorld.applyScriptFrame(sampleStory(periods,5.5));assert.deepEqual(priest.edgeColors,['#ffffff']);
+periodWorld.applyScriptFrame(sampleStory(periods,0));assert.deepEqual(soldier.edgeColors,['#ffffff']);
+periodWorld.applyScriptFrame(sampleStory(periods,3));assert.deepEqual(soldier.edgeColors,originalPaint);periodWorld.dispose();
+console.log('Story periods: polygon reuse, palette restoration, actor exceptions, act overrides, following camera, rewind and validation passed.');
+
+// Nonlinear trajectories remain exact data; contacts are resolved by Character.
+const curved=compileStory({version:1,title:'Curve',scene:'parade',actors:[{id:'a',type:'regular-4',position:[0,0]}],acts:[{title:'Walk',duration:4,actions:[{at:0,actor:'a',move:[4,0],via:[2,2],duration:4,easing:'smooth'}]}]});
+assert.deepEqual(actor(sampleStory(curved,2),'a').position,[2,1]);
+assert(actor(sampleStory(curved,1),'a').position[0]<1,'A smooth walk accelerates from rest');
+rejects(d=>d.acts[0].collision='yes',/collision/);
+rejects(d=>d.acts[0].actions=[{at:0,actor:'square',interaction:'explode'}],/interaction/);
+rejects(d=>d.acts[0].actions=[{at:0,actor:'square',move:[1,0],duration:1,easing:'code'}],/easing/);
+rejects(d=>d.acts[0].actions=[{at:0,actor:'square',turn:90,duration:1,via:[0,0]}],/需要 move/);
+for(const interaction of ['touch','kill']){
+  const physical=compileStory({version:1,title:'Contact',scene:'parade',actors:[
+    {id:'attacker',type:'regular-5',position:[-2,0],angle:0},
+    {id:'target',type:'regular-5',position:[0,0],angle:180},
+  ],acts:[{title:'Approach',duration:4,collision:true,observer:{follow:'attacker',offset:[0,-1]},actions:[
+    {at:0,actor:'attacker',interaction,move:[2,0],duration:4,easing:'smooth'},
+  ]}]});
+  const sim=await createSimulation({layout:'parade',scripted:true});sim.setScriptActors(physical.actors);
+  let frame;for(let tick=0;tick<=240;tick++)frame=sim.seekScript(physical,tick/60);
+  const a=actor(frame,'attacker'),b=actor(frame,'target');
+  assert(a.collisions>0,'Moving story characters produce real collision events');
+  assert.equal(b.state,interaction==='kill'?'dead':'alive');
+  if(interaction==='touch')assert(a.position[0]<b.position[0],'Characters cannot pass through one another');
+  else assert(b.deathAt>0&&b.deathAt<4,'Death is timed by actual contact');
+  assert.deepEqual(frame.observer.position,[a.position[0],a.position[1]-1],'Camera follows the resolved body');
+  const paused=structuredClone(frame);for(let i=0;i<60;i++)sim.step({});
+  assert.deepEqual(sim.seekScript(physical,4),paused,'Pausing never advances physics or death time');
+  sim.seekScript(physical,0);assert.equal(sim.entities.find(e=>e.storyId==='target').state,'alive');
+  assert.deepEqual(sim.seekScript(physical,4),paused,'Direct seeking and replay produce identical contacts and poses');
+  sim.dispose();
+}
+console.log('Story motion: curved easing, physical blocking, corner kills, pause, direct seek and deterministic replay passed.');
+
+const patterns={version:1,title:'Generated cast',scene:'parade',seed:71,
+  actors:[{id:'leader',type:'regular-5',position:[0,0],visible:false}],
+  groups:[{id:'crowd',type:'regular-3',count:12,size:.7}],
+  acts:[{title:'Walking',duration:6,cast:['leader','crowd'],collision:true,actions:[
+    {at:0,actors:'crowd',scatter:{bounds:[-4,4,-4,4],gap:1}},
+    {at:0,actors:'crowd',duration:6,wander:{radius:1,bounds:[-5,5,-5,5]}},
+    {at:0,actor:'leader',move:[1,0],duration:6},
+    {at:0,actors:'crowd',face:'leader',duration:6},
+  ]},{title:'Sway',duration:4,cast:[{group:'crowd',count:2}],actions:[
+    {at:0,actors:{group:'crowd',count:2},turn:0},
+    {at:0,actors:{group:'crowd',count:2},duration:4,sway:{angle:12,period:2}},
+  ]},{title:'Review',duration:4,cast:['crowd'],actions:[
+    {at:0,actors:'crowd',fan:{rings:3,radius:10,gap:2,angles:[210,330]}},
+    {at:0,actors:'crowd',turnBy:180,duration:1,stagger:{interval:.5,batch:4}},
+  ]}]};
+const generated=compileStory(patterns),same=compileStory(structuredClone(patterns));
+assert.equal(generated.actors.length,13);
+assert.deepEqual(sampleStory(generated,3),sampleStory(same,3),'A seed reproduces both layout and wandering');
+assert.notDeepEqual(sampleStory(generated,3),sampleStory(compileStory({...patterns,seed:72}),3),'A different seed changes the generated routes');
+const beginning=sampleStory(generated,0).actors.filter(a=>a.visible);
+for(let i=0;i<beginning.length;i++)for(let j=0;j<i;j++)assert(Math.hypot(...beginning[i].position.map((v,k)=>v-beginning[j].position[k]))>=1,'Scatter preserves spacing and excludes the named lead');
+const swaying=sampleStory(generated,6.5);
+assert.equal(swaying.actors.filter(a=>a.visible).length,2,'An act cast replaces the previous visible crowd');
+assert.equal(actor(swaying,'crowd_1').angle,12);
+assert.equal(actor(sampleStory(generated,7.5),'crowd_1').angle,-12);
+assert.deepEqual(actor(swaying,'crowd_1').position,actor(sampleStory(generated,6),'crowd_1').position,'Sway never translates a body');
+assert(Math.abs(Math.hypot(...actor(sampleStory(generated,10),'crowd_9').position)-14)<1e-8);
+assert.equal(actor(sampleStory(generated,10.5),'crowd_1').angle,300);
+assert.equal(actor(sampleStory(generated,10.5),'crowd_5').angle,210,'Turn waves start by row, rather than all at once');
+const focused=await createSimulation({layout:'parade',scripted:true});focused.setScriptActors(generated.actors);
+const focusFrame=focused.seekScript(generated,4),lead=actor(focusFrame,'leader');
+for(const follower of focusFrame.actors.filter(a=>a.visible&&a.face)){
+  const direction=Math.atan2(lead.position[1]-follower.position[1],lead.position[0]-follower.position[0]);
+  assert(Math.cos(follower.angle*Math.PI/180-direction)>.96,'Residents turn toward the leader’s actual body while walking');
+}
+focused.dispose();
+const swayTurn=compileStory({version:1,title:'Turn after sway',scene:'parade',actors:[{id:'a',type:'regular-3',position:[0,0]}],acts:[{title:'Turn',duration:2,actions:[
+  {at:0,actor:'a',sway:{angle:12,period:4},duration:1},
+  {at:1,actor:'a',turnBy:90,duration:1},
+]}]});
+assert.equal(actor(sampleStory(swayTurn,2),'a').angle,102,'Relative turns start at the previous sway endpoint');
+function rejectPattern(change,pattern){const value=structuredClone(patterns);change(value);assert.throws(()=>compileStory(value),pattern);}
+rejectPattern(d=>d.actors=[null],/需要对象/);
+rejectPattern(d=>d.acts=null,/acts/);
+rejectPattern(d=>d.acts[0].actions=[null],/需要对象/);
+rejectPattern(d=>d.groups[0].count=2049,/2048/);
+rejectPattern(d=>d.groups[0].count=1.5,/整数/);
+rejectPattern(d=>d.seed=-1,/seed/);
+rejectPattern(d=>d.acts[0].cast=['crowd','crowd_1'],/重复/);
+rejectPattern(d=>d.acts[0].cast=[{group:'crowd',count:20}],/12/);
+rejectPattern(d=>d.acts[0].actions[0].scatter.run='code',/未知字段/);
+rejectPattern(d=>d.acts[0].actions[0].scatter.bounds=[0,.1,0,.1],/放不下/);
+rejectPattern(d=>d.acts[0].actions[1].coloring=true,/未知字段/);
+rejectPattern(d=>d.acts[0].actions[3].face='missing',/face/);
+rejectPattern(d=>d.acts[0].actions[2]={at:0,actor:'leader',face:'leader',duration:1},/face/);
+rejectPattern(d=>d.acts[1].actions[1].sway.period=0,/period/);
+rejectPattern(d=>d.acts[2].actions[0].fan.rings=5,/每圈/);
+rejectPattern(d=>{d.groups[0].count=24;d.acts=[{title:'Too many',duration:600,cast:'crowd',actions:[{at:0,actors:'crowd',duration:600,wander:{step:[.3,.3],pause:[0,0]}}]}];},/20000/);
+console.log('Story rules: generated groups, seeded scatter/wandering, bounded expansion, row turns, moving focus and stationary sway passed.');

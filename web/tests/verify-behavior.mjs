@@ -44,5 +44,10 @@ assert(!updateDeathEffect(mesh,character,800,true),'Finished corpses never repla
 const disabled=fixture();assert(!updateDeathEffect(disabled,character,0,false),'Disabled animation disappears immediately');
 assert(!updateDeathEffect(disabled,character,1,true),'Enabling animation does not replay old deaths');
 const interrupted=fixture();assert(updateDeathEffect(interrupted,character,0,true));assert(!updateDeathEffect(interrupted,character,100,false));assert(!interrupted.userData.death,'Disabling an active effect immediately clears it');
-for(const root of [mesh,disabled,interrupted]){root.geometry.dispose();root.children[0].geometry.dispose();root.material.dispose();}
+const sought=fixture();assert(updateDeathEffect(sought,character,5300,true,5000));
+assert.equal(sought.material.uniforms.fade.value,.5,'Seeking into a death uses its story time rather than the render clock');
+const paused=sought.geometry.attributes.position.array.slice();updateDeathEffect(sought,character,5300,true,5000);
+assert.deepEqual(sought.geometry.attributes.position.array,paused,'A paused story freezes the fragments');
+assert(!updateDeathEffect(sought,character,5700,true,5000));
+for(const root of [mesh,disabled,interrupted,sought]){root.geometry.dispose();root.children[0].geometry.dispose();root.material.dispose();}
 console.log('Behavior checks passed: independent NPC kills, population inheritance, fragment motion/fade, disabled effects and cleanup.');

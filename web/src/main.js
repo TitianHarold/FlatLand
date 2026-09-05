@@ -13,7 +13,7 @@ import {parseStory,sampleStory} from './story-script.js';
 const $=id=>document.getElementById(id);
 const requestedLayout=new URLSearchParams(location.search).get('scene');
 const scripted=new URLSearchParams(location.search).has('storyboard');
-let storyObserverSelected=false;
+let storyCameraManual=false;
 const layout=['parade','mask','stars'].includes(requestedLayout)?requestedLayout:'house';
 const parade=layout==='parade',maskTest=layout==='mask',stars=layout==='stars',openScene=layout!=='house';
 let sim;
@@ -172,6 +172,11 @@ for(const [i,w] of sim.walls.entries()) {
 }
 const entityMeshes=new Map();
 let deathAnimation=false;
+function removeMesh(id){
+  const mesh=entityMeshes.get(id);
+  worldGroup.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();
+  mesh.children.forEach(c=>c.geometry.dispose());entityMeshes.delete(id);
+}
 function addMesh(e) {
   if(!e.storyId)setScenePaintStyle([e],rules,rules.paintStyle);
   const vertices=e.vertices,edges=e.paintedEdges??vertices.map((a,i)=>({a,b:vertices[(i+1)%vertices.length]}));
@@ -275,7 +280,7 @@ function drawMini(observer) {
   mini.lineWidth=2.5/scale;mini.strokeStyle=rules.coloring?rules.materials.house.color:'#969696';mini.beginPath();
   for(const w of sim.walls){mini.moveTo(w.a.x,w.a.y);mini.lineTo(w.b.x,w.b.y);}mini.stroke();
   mini.strokeStyle='#628653';mini.lineWidth=1.5/scale;mini.setLineDash([.3,.18]);
-  for(const screenX of [0,.5,1]){
+  for(const screenX of (!scripted||storyCameraManual)?[0,.5,1]:[]){
     const d=sightDirection(observer,screenX);
     mini.beginPath();mini.moveTo(p.x,p.y);mini.lineTo(p.x+d.x*radius/scale,p.y+d.y*radius/scale);mini.stroke();
   }
@@ -300,10 +305,12 @@ function drawMini(observer) {
     mini.restore();
   }
   for(const e of sim.entities)if(e!==sim.player)drawResident(e);
-  drawResident(sim.player);
-  mini.translate(p.x,p.y);mini.rotate(heading);
-  mini.strokeStyle='#527547';mini.lineWidth=2/scale;mini.beginPath();mini.arc(0,0,.65,0,Math.PI*2);mini.stroke();
-  mini.fillStyle='#527547';mini.beginPath();mini.moveTo(1.05,0);mini.lineTo(.69,.18);mini.lineTo(.69,-.18);mini.closePath();mini.fill();
+  if(!scripted||storyCameraManual){
+    drawResident(sim.player);
+    mini.translate(p.x,p.y);mini.rotate(heading);
+    mini.strokeStyle='#527547';mini.lineWidth=2/scale;mini.beginPath();mini.arc(0,0,.65,0,Math.PI*2);mini.stroke();
+    mini.fillStyle='#527547';mini.beginPath();mini.moveTo(1.05,0);mini.lineTo(.69,.18);mini.lineTo(.69,-.18);mini.closePath();mini.fill();
+  }
   mini.restore();
   mini.font='600 21px "PingFang SC", sans-serif';mini.textAlign='center';mini.textBaseline='middle';
   for(const [name,angle] of [['北',Math.PI/2],['东',0],['南',-Math.PI/2],['西',Math.PI]]) {
@@ -332,6 +339,10 @@ container.addEventListener('wheel',event=>{
 let frames=0,fps=60,statsAt=performance.now(),previousTime=performance.now(),accumulator=0,collisionCooldown=0;
 function resize(){width=container.clientWidth;height=container.clientHeight;viewportSize.value.set(width,height);renderer.setSize(width,height);previewBounds=null;}
 addEventListener('resize',resize);resize();
+function setDisplayHeight(height){
+  for(const mesh of wallMeshes)mesh.scale.z=height;
+  for(const mesh of entityMeshes.values()){mesh.position.z=PLANE_HEIGHT-height/2;mesh.scale.z=height;}
+}
 function drawSightPreview(observer){
   // Only a small viewport pass: reuse this scene, its meshes and light textures.
   // Cache layout until resize or view entry, avoiding a layout read each frame.
@@ -352,7 +363,11 @@ function drawSightPreview(observer){
   savedFlatWindow.copy(flatWindow.value);flatWindow.value.set(1,windowHeight/100);
   viewportSize.value.set(w,h);viewportOrigin.value.set(x,y);
   renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);
+  // The resident inset views the same meshes from their edges, so restore their
+  // thickness for this pass, then return them to the overhead plane.
+  setDisplayHeight(shapeHeight);
   renderView(residentCamera,{x,y,width:w,height:h});
+  setDisplayHeight(shapeHeight*perspective);
   renderer.setScissorTest(false);renderer.setViewport(0,0,width,height);
   flatWindow.value.copy(savedFlatWindow);viewportSize.value.set(width,height);viewportOrigin.value.set(0,0);
 }
@@ -441,7 +456,7 @@ $('reference-dialog').addEventListener('click',e=>{if(e.target===$('reference-di
 addEventListener('keydown',e=>{
   if($('reference-dialog').open||['INPUT','SELECT'].includes(e.target.tagName)||(e.target.tagName==='BUTTON'&&e.code==='Space'))return;
   if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
-  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){clearTimeout(clickTimer);sim.aimAt(null);}
+  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){clearTimeout(clickTimer);sim.aimAt(null);if(scripted)storyCameraManual=true;}
   if(e.code==='Space'&&!e.repeat){
     if(scripted)parent.postMessage({type:'flatland-story-toggle-view'},location.origin);
     else setPerspective(targetPerspective>.5?0:1);
@@ -467,13 +482,15 @@ function cameraTarget(event){
 }
 function pointCameraAt(target){
   if(!target)return;
+  if(scripted)storyCameraManual=true;
   const eye=sim.player.body.translation(),dx=target.x-eye.x,dy=target.y-eye.y;
   if(Math.hypot(dx,dy)>1e-6)sim.player.body.setRotation(Math.atan2(dy,dx),true);
 }
 function placeStoryCamera(target){
   if(!target||![target.x,target.y].every(Number.isFinite))throw new Error('请重新选择观察点');
   if(sim.occupied(target,.1,sim.player))throw new Error('这个点位在墙体内，请选择空地');
-  sim.player.body.setTranslation({x:target.x,y:target.y},true);storyObserverSelected=true;
+  sim.player.body.setTranslation({x:target.x,y:target.y},true);
+  storyCameraManual=true;
   parent.postMessage({type:'flatland-camera-placed'},location.origin);
 }
 container.addEventListener('pointerdown',e=>{
@@ -528,6 +545,7 @@ function animate(now) {
   const held=(...codes)=>codes.some(c=>keys.has(c))?1:0;
   while(accumulator>=1/60) {
     const mouseTurn=Math.max(-3,Math.min(3,pendingTurn/(1.5/60)));pendingTurn-=mouseTurn*1.5/60;
+    if(scripted&&mouseTurn)storyCameraManual=true;
     sim.step({forward:held('KeyW','ArrowUp')-held('KeyS','ArrowDown'),side:held('KeyQ')-held('KeyE'),turn:held('KeyA','ArrowLeft')-held('KeyD','ArrowRight')+mouseTurn});accumulator-=1/60;
     if(sim.walkStatus==='blocked'){toast(sim.pathfinding?'没有找到可通行的路线，请换一个目的地':'前方有障碍，已停止移动');sim.aimAt(null);}
   }
@@ -569,21 +587,23 @@ function animate(now) {
     const size=([5,2,1].find(n=>n*magnitude*pixelsPerLength<=110)??1)*magnitude;
     scaleBar.style.width=`${size*pixelsPerLength}px`;scaleBar.textContent=formatLength(size);
   }
+  // At exactly 90 degrees every edge lies in one plane: no extruded sides or
+  // height parallax. The same mesh gains display height toward resident view.
   if(wallMeshes.length)updateOverviewLight(wallMeshes[0],p);
   const present=new Set(sim.entities.map(e=>e.id));
-  for(const [id,mesh] of entityMeshes)if(!present.has(id)){
-    worldGroup.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();
-    mesh.children.forEach(c=>c.geometry.dispose());entityMeshes.delete(id);
-  }
+  for(const id of entityMeshes.keys())if(!present.has(id))removeMesh(id);
   for(const e of sim.entities) {
     let mesh=entityMeshes.get(e.id);
-    mesh??=addMesh(e);const pos=e.body.translation();mesh.position.set(pos.x,pos.y,PLANE_HEIGHT-shapeHeight/2);mesh.rotation.z=e.body.rotation();mesh.scale.z=shapeHeight;
-    const visible=updateDeathEffect(mesh,e,now,deathAnimation&&!reducedMotion.matches);
+    if(mesh?.userData.deathSeen&&e.state!=='dead'){removeMesh(e.id);mesh=null;}
+    if(e.storyVisible===false){if(mesh)mesh.visible=false;continue;}
+    mesh??=addMesh(e);const pos=e.body.translation();mesh.position.x=pos.x;mesh.position.y=pos.y;mesh.rotation.z=e.body.rotation();
+    const visible=updateDeathEffect(mesh,e,scripted?(storyFrame?.time??0)*1000:now,(scripted||deathAnimation)&&!reducedMotion.matches,e.storyDeathAt===undefined?undefined:e.storyDeathAt*1000);
     mesh.visible=(e!==sim.player||t===0)&&visible&&e.storyVisible!==false;
     mesh.children.forEach(outline=>{outline.visible=!residentView;});
     if(mesh.visible)updateOverviewLight(mesh,p);
   }
-  observerGuide.position.set(p.x,p.y,PLANE_HEIGHT);cone.visible=(!scripted||storyObserverSelected)&&t<.75;
+  setDisplayHeight(shapeHeight*t);
+  observerGuide.position.set(p.x,p.y,PLANE_HEIGHT);cone.visible=(!scripted||storyCameraManual)&&t<.75;
   const guideExtent=maskRadius.value>0?maskRadius.value:topDistance*2*Math.tan(observer.fov/2)+Math.hypot(p.x-centre.x,p.y-centre.y);
   for(const {line,screenX} of sightGuides){
     const d=sightDirection(observer,screenX),positions=line.geometry.attributes.position;
@@ -593,9 +613,9 @@ function animate(now) {
   }
   rangeCircle.visible=!scripted&&t===0&&maskRadius.value>0&&$('show-range').checked;
   rangeCircle.scale.setScalar(maskRadius.value);
-  ring.visible=(!scripted||storyObserverSelected)&&t===0;
+  ring.visible=(!scripted||storyCameraManual)&&t===0;
   if(sim.walkTarget){markTarget(sim.walkTarget);}
-  targetMarker.visible=t===0&&now<targetMarkerUntil;
+  targetMarker.visible=(!scripted||storyCameraManual)&&t===0&&now<targetMarkerUntil;
   targetMarker.scale.setScalar(canvasWidth/width*5);
   $('labels').style.opacity=Math.max(0,1-t*3.7);
   for(const {el,position} of labelElements){const pos=position.clone().project(camera);el.style.left=`${(pos.x*.5+.5)*width}px`;el.style.top=`${(-pos.y*.5+.5)*height}px`;}
@@ -615,10 +635,40 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 $('loading').remove();if(!scripted)container.focus({preventScroll:true});requestAnimationFrame(animate);
-let storyScript,storyFrame;
+let storyScript,storyFrame,storyColoring;
+function fitStoryAct(index){
+  const act=storyScript.acts[index],end=act.start+act.duration;
+  overviewBounds.makeEmpty();
+  for(const wall of wallBoundaries)for(const point of wall.vertices)overviewBounds.expandByPoint(point);
+  const include=([x,y],r=.6)=>{
+    overviewBounds.expandByPoint(new THREE.Vector2(x-r,y-r));overviewBounds.expandByPoint(new THREE.Vector2(x+r,y+r));
+  };
+  const start=sampleStory(storyScript,act.start);
+  start.actors.forEach((actor,i)=>{
+    const track=storyScript.tracks.get(actor.id),during=event=>event.at>=act.start&&event.at<end;
+    if(!actor.visible&&!track.visible.some(event=>during(event)&&event.to))return;
+    include(actor.position,storyScript.actors[i].size/2);
+    for(const event of track.position)if(during(event)){include(event.to,storyScript.actors[i].size/2);if(event.via)include(event.via,storyScript.actors[i].size/2);}
+  });
+  for(const frame of [start,sampleStory(storyScript,end-.00001)])if(frame.observer)include(frame.observer.position);
+  if(overviewBounds.isEmpty())overviewBounds.set(new THREE.Vector2(-1,-1),new THREE.Vector2(1,1));
+  overviewZoom=1;
+}
 function seekStory(time){
   if(!storyScript)throw new Error('尚未载入故事');
-  storyFrame=sampleStory(storyScript,time);sim.applyScriptFrame(storyFrame);
+  const previous=storyFrame;
+  storyFrame=sim.seekScript(storyScript,time);
+  const changed=previous?.actIndex!==storyFrame.actIndex;
+  const atStart=time===storyScript.acts[storyFrame.actIndex].start;
+  if(changed||time<previous?.time)for(const [id,mesh] of entityMeshes)if(mesh.userData.deathSeen)removeMesh(id);
+  if(changed||atStart||time<previous?.time)storyCameraManual=false;
+  if(changed||atStart)fitStoryAct(storyFrame.actIndex);
+  if(storyFrame.observer&&!storyCameraManual){
+    const {position:[x,y],angle}=storyFrame.observer;
+    sim.player.body.setTranslation({x,y},true);sim.player.body.setRotation(angle*Math.PI/180,true);
+  }
+  const coloring=storyFrame.coloring??storyColoring;
+  if(rules.coloring!==coloring){rules.coloring=coloring;lightRevision++;}
   for(const e of sim.entities){
     const mesh=entityMeshes.get(e.id);
     if(e.storyId&&mesh&&mesh.userData.storyPaint!==e.edgeColors.join(',')){updateMeshPaint(mesh,e);mesh.userData.storyPaint=e.edgeColors.join(',');}
@@ -630,13 +680,9 @@ connectStudio('world',{
     load(text){
       const next=parseStory(text);
       if(next.scene!==layout)throw new Error('故事场景与当前世界不一致，请重新载入场景');
-      storyScript=next;storyObserverSelected=false;sim.setScriptActors(next.actors,next.observer,rules.paintStyle);seekStory(0);fitOverview();
-      // Frame every scripted destination once; the camera stays still during a move.
-      for(const actor of next.actors)for(const event of [{to:actor.position},...next.tracks.get(actor.id).position]){
-        const [x,y]=event.to,r=actor.size/2;
-        overviewBounds.expandByPoint(new THREE.Vector2(x-r,y-r));overviewBounds.expandByPoint(new THREE.Vector2(x+r,y+r));
-      }
-      if(!next.observer){
+      storyColoring??=rules.coloring;
+      storyScript=next;storyFrame=undefined;sim.setScriptActors(next.actors,next.observer,rules.paintStyle);seekStory(0);
+      if(!next.observer&&!next.acts[0].observer){
         const centre=overviewBounds.getCenter(new THREE.Vector2());
         const candidates=[{x:centre.x,y:overviewBounds.min.y-2},sim.home,{x:overviewBounds.max.x+2,y:centre.y}];
         const eye=(layout==='house'?[sim.home,...candidates]:candidates).find(p=>!sim.occupied(p,.1))??sim.home;
@@ -644,7 +690,6 @@ connectStudio('world',{
       }
       const eye=sim.player.body.translation();
       for(const offset of [-.6,.6])overviewBounds.expandByPoint(new THREE.Vector2(eye.x+offset,eye.y+offset));
-      storyObserverSelected=true;
       return {title:next.title,duration:next.duration};
     },
     seek:seekStory,
@@ -676,6 +721,7 @@ connectStudio('world',{
     for(const [material,key] of [['resident','residentEmission'],['house','houseEmission']])if(Object.hasOwn(values,key))rules.materials={...rules.materials,[material]:{...rules.materials[material],emission:values[key]}};
   },
   snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},walkTarget:sim.walkTarget,pathfinding:sim.pathfinding,residentKilling:sim.residentKilling,deathAnimation,targetMarker:{visible:targetMarker.visible,x:targetMarker.position.x,y:targetMarker.position.y},lightingUpdates,observerScreen:new THREE.Vector3(overviewEye.value.x,overviewEye.value.y,PLANE_HEIGHT).project(camera).toArray().slice(0,2),layout,projection,canvasExtent:{width:canvasWidth,height:canvasHeight},overviewZoom,perspective:targetPerspective,cameraProgress:perspective,
+    cameraGuide:{visible:ring.visible||cone.visible,manual:storyCameraManual},displayHeight:shapeHeight*perspective,cameraDirection:camera.getWorldDirection(new THREE.Vector3()).toArray(),
     rangeGuide:{visible:rangeCircle.visible,radius:rangeCircle.scale.x,x:observerGuide.position.x,y:observerGuide.position.y,rayLength:Math.hypot(sightGuides[0].line.geometry.attributes.position.getX(1),sightGuides[0].line.geometry.attributes.position.getY(1))},
     guideOrigins:{eye:[overviewEye.value.x,overviewEye.value.y,PLANE_HEIGHT],ring:ring.getWorldPosition(new THREE.Vector3()).toArray(),range:rangeCircle.getWorldPosition(new THREE.Vector3()).toArray(),rays:sightGuides.map(({line})=>line.localToWorld(new THREE.Vector3().fromBufferAttribute(line.geometry.attributes.position,0)).toArray())},
     mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.filter(e=>e.state!=='dead').length,wandering:sim.wandering,

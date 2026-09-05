@@ -1,13 +1,13 @@
 // Reuse each painted edge as a fragment; allocate only when a kill is displayed.
 // Returns whether the character should still be drawn this frame.
-export function updateDeathEffect(mesh,character,now,enabled){
+export function updateDeathEffect(mesh,character,now,enabled,startedAt=now){
   if(character.state!=='dead')return true;
   if(!mesh.userData.deathSeen){
     mesh.userData.deathSeen=true;
     if(enabled&&character.deathCause==='killed'){
       const parts=[mesh,...mesh.children].map(part=>({part,original:Object.fromEntries(
         ['position','adjacent','edgeStart','edgeEnd'].filter(key=>part.geometry.hasAttribute(key)).map(key=>[key,part.geometry.getAttribute(key).array.slice()]))}));
-      mesh.userData.death={started:now,parts};
+      mesh.userData.death={started:startedAt,parts};
       mesh.material.transparent=true;mesh.material.depthWrite=false;
       for(const {part} of parts)part.frustumCulled=false;
     }

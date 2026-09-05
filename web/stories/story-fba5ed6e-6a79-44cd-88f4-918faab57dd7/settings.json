@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "state": {
+    "shared": {
+      "paintStyle": "dufy",
+      "customPaint": {"colors": ["#F0C84B", "#426AB3", "#E88970", "#8EBE95", "#B96791"]},
+      "paintMode": "mixed",
+      "coloring": true,
+      "wallColor": "#928C99",
+      "exposure": 24,
+      "detailGain": 3,
+      "detailStyle": "soft",
+      "scatterEnabled": true,
+      "scatterDistance": 128,
+      "scatterCurve": "quadratic",
+      "attenuationEnabled": false,
+      "attenuationDistance": 98,
+      "attenuationCurve": "quadratic",
+      "residentEmission": 2,
+      "houseEmission": 0.125
+    },
+    "view": {
+      "dimension": 0,
+      "display": "line",
+      "fieldAngle": 160,
+      "windowHeight": 1,
+      "projection": "perspective",
+      "showRange": false,
+      "mapLocked": false
+    }
+  }
+}

@@ -23,6 +23,17 @@ export const characterTypes = [
   })),
 ];
 
+// Stories can instantiate more regular polygons without changing the studio's
+// six default residents. They use the same Character geometry and paint bands.
+export function getCharacterType(id) {
+  const known=characterTypes.find(type=>type.id===id);
+  if(known)return known;
+  const sides=/^regular-([1-9][0-9]*)$/.test(id)?Number(id.slice(8)):0;
+  if(!Number.isInteger(sides)||sides<3||sides>128)return undefined;
+  return {id,name:`正${sides}边形`,shape:{kind:'regular',sides},color:front,
+    paintBands:Array.from({length:sides},(_,i)=>{const x=Math.cos((i+.5)*2*Math.PI/sides);return x>.5?0:x<-.5?2:1;})};
+}
+
 export class Character {
   constructor(id, type, {shape=type.shape, color, name=type.name,size=DEFAULT_SIZE,paintStyle=DEFAULT_PAINT_STYLE,paintVariant}={}) {
     if(!Number.isFinite(size)||size<MIN_SIZE||size>MAX_SIZE)throw new RangeError(`角色体型必须在 ${MIN_SIZE} 到 ${MAX_SIZE} 身长之间`);
