@@ -59,10 +59,10 @@ npm run preview
 
 仓库：[TitianHarold/FlatLand](https://github.com/TitianHarold/FlatLand)。
 
-推送 `main` 会运行测试和构建；发布网站由你手动触发：
+网站入口：[平面国场景工作台](https://titianharold.github.io/FlatLand/)。
 
-1. 仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
-2. 在 **Actions → GitHub Pages → Run workflow** 选择 `main` 运行。
-3. 工作流发布 `web/dist/`，网站入口为 `https://titianharold.github.io/FlatLand/`；最终地址以部署任务输出为准。
+Pages 的发布来源使用 **GitHub Actions**。推送 `main` 上的网页代码或部署配置后，工作流自动执行测试、构建，并发布 `web/dist/`；也可以在 **Actions → GitHub Pages → Run workflow** 手动重新发布。
 
-当前仓库为私有，GitHub Pages 需要账号套餐支持私有仓库发布；仓库可见性不因本工作流改变。配置方式参考 [GitHub Pages 官方文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) 和 [Vite 相对路径构建说明](https://vite.dev/guide/build.html#relative-base)。
+构建后的 HTML、JavaScript、样式和素材随 Pages 产物一起上传，不需要提交 `dist/` 或把仓库根目录直接作为网站。部署状态与最终地址见 [GitHub Pages 工作流](https://github.com/TitianHarold/FlatLand/actions/workflows/pages.yml)。
+
+配置方式参考 [GitHub Pages 官方文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) 和 [Vite 相对路径构建说明](https://vite.dev/guide/build.html#relative-base)。
