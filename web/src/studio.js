@@ -8,10 +8,11 @@ import './studio.css';
 
 const $=id=>document.getElementById(id),frame=$('preview'),controls=document.querySelector('.studio-shell');
 const scenes={
-  house:{title:'一座房子',url:'./world.html?studio=1',kind:'world'},
-  parade:{title:'色彩检阅场',url:'./world.html?studio=1&scene=parade',kind:'world'},
+  house:{title:'我的家',url:'./world.html?studio=1',kind:'world'},
+  neighborhood:{title:'小社区',url:'./world.html?studio=1&scene=neighborhood',kind:'world'},
+  parade:{title:'彩色阅兵场',url:'./world.html?studio=1&scene=parade',kind:'world'},
   stars:{title:'星野',url:'./world.html?studio=1&scene=stars',kind:'world'},
-  mask:{title:'同心圆遮罩',url:'./world.html?studio=1&scene=mask',kind:'world'},
+  mask:{title:'环形广场',url:'./world.html?studio=1&scene=mask',kind:'world'},
   characters:{title:'角色与碰撞',url:'./character-lab.html?studio=1',kind:'characters'},
 };
 let state=structuredClone(defaults),api=null,loadTimer,saveTimer;

@@ -68,9 +68,12 @@ export function houseBoundaries(sim) {
       {x:-x,y:-y},{x,y:-y},{x,y},{x:-x,y},
     ],collider.translation(),collider.rotation())};
   }));
-  if(sim.outline&&walls.length){
-    const object={outline:sim.outline,boundaries:walls.map(w=>w.vertices)};
-    for(const wall of walls)wall.object=object;
+  const houses=new Map();
+  for(const [i,wall] of walls.entries()){
+    const outline=sim.walls[i].house?.outline??sim.outline;
+    if(!outline)continue;
+    if(!houses.has(outline))houses.set(outline,{outline,boundaries:[]});
+    wall.object=houses.get(outline);wall.object.boundaries.push(wall.vertices);
   }
   return walls;
 }

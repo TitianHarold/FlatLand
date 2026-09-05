@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {createSimulation, point, labels} from './world.js';
+import {createSimulation, point} from './world.js';
 import {worldVertices, observerFor, sightDirection, houseBoundaries, setScenePaintStyle} from './sight.js';
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE} from './paint.js';
 import {OPTICS_RULES, boundaryLighting, surfaceLight, exposeLight, opticalTint} from './optics.js';
@@ -14,8 +14,8 @@ const $=id=>document.getElementById(id);
 const requestedLayout=new URLSearchParams(location.search).get('scene');
 const scripted=new URLSearchParams(location.search).has('storyboard');
 let storyCameraManual=false;
-const layout=['parade','mask','stars'].includes(requestedLayout)?requestedLayout:'house';
-const parade=layout==='parade',maskTest=layout==='mask',stars=layout==='stars',openScene=layout!=='house';
+const layout=['parade','neighborhood','mask','stars'].includes(requestedLayout)?requestedLayout:'house';
+const parade=layout==='parade',neighborhood=layout==='neighborhood',maskTest=layout==='mask',stars=layout==='stars',openScene=layout!=='house';
 let sim;
 try { sim=await createSimulation({layout,scripted}); }
 catch(error){$('loading').textContent='物理世界加载失败，请刷新重试。';console.error(error);throw error;}
@@ -150,7 +150,7 @@ function paintedGeometry(edges,outlineOnly=false) {
   if(outlineOnly){geometry.setAttribute('adjacent',new THREE.Float32BufferAttribute(adjacent,3));geometry.setAttribute('stroke',new THREE.Float32BufferAttribute(strokes,1));}
   geometry.setAttribute('paint',new THREE.Float32BufferAttribute(colors,3));return geometry;
 }
-const box=new THREE.BoxGeometry(1,1,1).toNonIndexed(),wallMeshes=[],wallBoundaries=houseBoundaries(sim),wallMaterial=opticalMaterial(OPTICS_RULES.materials.house.color);
+const box=new THREE.BoxGeometry(1,1,1).toNonIndexed(),wallMeshes=[],wallBoundaries=houseBoundaries(sim),houseMeshes=new Map();
 // Box faces carry the same boundary endpoints as resident faces.
 const wallStarts=[],wallEnds=[],wallPositions=box.getAttribute('position');
 for(let face=0;face<wallPositions.count;face+=6){
@@ -165,10 +165,13 @@ for(let face=0;face<wallPositions.count;face+=6){
 box.setAttribute('edgeStart',new THREE.Float32BufferAttribute(wallStarts,2));box.setAttribute('edgeEnd',new THREE.Float32BufferAttribute(wallEnds,2));
 for(const [i,w] of sim.walls.entries()) {
   const {x,y}=w.collider.halfExtents(),pos=w.collider.translation();
-  const mesh=new THREE.Mesh(box,wallMaterial);
+  const house=wallBoundaries[i].object;
+  const material=houseMeshes.get(house)?.material??opticalMaterial(OPTICS_RULES.materials.house.color);
+  const mesh=new THREE.Mesh(box,material);
   mesh.position.set(pos.x,pos.y,PLANE_HEIGHT);mesh.rotation.z=w.collider.rotation();mesh.scale.set(x*2,y*2,shapeHeight);
   mesh.userData.boundary={...wallBoundaries[i],vertices:[{x:-x,y:-y},{x,y:-y},{x,y},{x:-x,y}]};
   worldGroup.add(mesh);wallMeshes.push(mesh);
+  if(!houseMeshes.has(house))houseMeshes.set(house,mesh);
 }
 const entityMeshes=new Map();
 let deathAnimation=false;
@@ -220,10 +223,9 @@ let targetMarkerUntil=0;
 function markTarget(target){targetMarker.position.set(target.x,target.y,.09);targetMarkerUntil=performance.now()+900;}
 for(const guide of [cone,rangeCircle,ring])guide.traverse(part=>part.layers.set(2));
 if(parade&&!scripted)ring.scale.setScalar(4);
-const labelElements=(openScene||scripted?[]:labels).map(([name,x,y,cls,sub])=>{
+const labelElements=(scripted?[]:sim.labels).map(({name,x,y,cls})=>{
   const el=document.createElement('div');el.className=`room-label ${cls}`;el.textContent=name;
-  if(sub){const span=document.createElement('span');span.className='sub';span.textContent=sub;el.appendChild(span);}
-  $('labels').appendChild(el);return{el,position:new THREE.Vector3(point(x,y).x,point(x,y).y,.1)};
+  $('labels').appendChild(el);return{el,position:new THREE.Vector3(x,y,.1)};
 });
 
 // Photometry stays shared with Study 000; the room always renders its 3D meshes.
@@ -269,7 +271,7 @@ function setMapFollow(follow) {
 }
 $('map-lock').onchange=()=>setMapFollow(!$('map-lock').checked);
 function drawMini(observer) {
-  const scale=stars?.055:maskTest?.8:parade?2.5:18,centre=210,radius=180;
+  const scale=stars?.055:maskTest?.8:parade?2.5:neighborhood?4:18,centre=210,radius=180;
   const p=observer,heading=Math.PI/2-observer.heading;
   // North is +Y. Rotate the map so the resident's forward vector points up.
   const rotation=mapFollowsHeading?heading-Math.PI/2:0;
@@ -406,7 +408,7 @@ $('coloring').onchange=e=>{rules.coloring=e.target.checked;lightRevision++;};
 function setPaintStyle(styleId) {
   lightRevision++;
   setScenePaintStyle(sim.entities,rules,styleId);
-  wallMaterial.uniforms.tint.value.set(...opticalTint(rules.materials.house.color));
+  for(const mesh of houseMeshes.values())mesh.material.uniforms.tint.value.set(...opticalTint(rules.materials.house.color));
   for(const character of sim.entities){
     const mesh=entityMeshes.get(character.id);if(mesh)updateMeshPaint(mesh,character);
   }
@@ -418,16 +420,21 @@ $('paint-style').onchange=e=>setPaintStyle(e.target.value);
 $('wandering').checked=sim.wandering;
 $('wandering').onchange=e=>{sim.setWandering(e.target.checked);container.focus({preventScroll:true});};
 if(parade){
-  $('scene-name').textContent='色彩检阅场';$('scene-subtitle').textContent='中央通道 · 两侧色彩队列';
+  $('scene-name').textContent='彩色阅兵场';$('scene-subtitle').textContent='扇形队列 · 径向通道';
   $('reset').textContent='回到入口';
   $('population').replaceChildren(new Option('1000','1000'),new Option('2000','2000'));
-  document.title='平面国 · 色彩检阅场';
+  document.title='平面国 · 彩色阅兵场';
+}
+if(neighborhood){
+  $('scene-name').textContent='小社区';$('scene-subtitle').textContent='三户住宅 · 街道与巷口';
+  $('reset').textContent='回到街口';document.title='平面国 · 小社区';
+  container.setAttribute('aria-label','平面国小社区，W S 前进后退，A D 转向，Q E 横移，空格切换视角');
 }
 if(maskTest){
-  $('scene-name').textContent='同心圆遮罩';$('scene-subtitle').textContent=`5—${sim.bounds.x} 身长 · 等距居民`;
-  $('reset').textContent='回到圆心';document.title='平面国 · 同心圆遮罩';
+  $('scene-name').textContent='环形广场';$('scene-subtitle').textContent=`5—${sim.bounds.x} 身长 · 等距居民`;
+  $('reset').textContent='回到圆心';document.title='平面国 · 环形广场';
   $('population').replaceChildren(new Option(`${sim.entities.length-1} 个标本 + 观察者`,String(sim.entities.length)));
-  $('scene-layout').add(new Option('同心圆遮罩','mask'));
+  $('scene-layout').add(new Option('环形广场','mask'));
 }
 if(stars){
   $('scene-name').textContent='星野';$('scene-subtitle').textContent='近邻与远处居民';
@@ -449,7 +456,7 @@ $('interaction').onchange=e=>{
 $('reset').onclick=()=>{
   clearTimeout(clickTimer);
   let found=false;for(const p of [sim.home,...(openScene?[]:[point(320,270),point(310,295),point(290,285)])])if(sim.relocate(p)){found=true;break;}
-  if(found){sim.player.body.setRotation(Math.PI/2,true);toast(maskTest?'已回到圆心':parade?'已回到检阅场入口':'已回到客厅');}else toast('这里暂时拥挤，请双击其他空地');
+  if(found){sim.player.body.setRotation(Math.PI/2,true);toast(maskTest?'已回到圆心':parade?'已回到检阅场入口':neighborhood?'已回到街口':'已回到客厅');}else toast('这里暂时拥挤，请双击其他空地');
 };
 $('reference').onclick=()=>{$('reference-dialog').showModal();keys.clear();};$('close-reference').onclick=()=>$('reference-dialog').close();
 $('reference-dialog').addEventListener('click',e=>{if(e.target===$('reference-dialog'))$('reference-dialog').close();});
@@ -589,7 +596,7 @@ function animate(now) {
   }
   // At exactly 90 degrees every edge lies in one plane: no extruded sides or
   // height parallax. The same mesh gains display height toward resident view.
-  if(wallMeshes.length)updateOverviewLight(wallMeshes[0],p);
+  for(const mesh of houseMeshes.values())updateOverviewLight(mesh,p);
   const present=new Set(sim.entities.map(e=>e.id));
   for(const id of entityMeshes.keys())if(!present.has(id))removeMesh(id);
   for(const e of sim.entities) {

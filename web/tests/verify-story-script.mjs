@@ -80,7 +80,7 @@ for(const layout of ['house','parade','stars','mask']){
   assert.equal(sim.entities.length,4);sim.dispose();
 }
 const studio=await createSimulation({layout:'house',wandering:false});
-assert.equal(studio.entities.length,14,'Normal studio populations remain unchanged');
+assert.equal(studio.entities.length,15,'The studio includes the full household; scripted worlds do not spawn it');
 assert(studio.entities.every(e=>e.storyVisible===undefined));
 assert.throws(()=>studio.setScriptActors(story.actors),/仅可用于剧场/);studio.dispose();
 console.log('Story checks passed: validation, boundaries, interpolation, deterministic replay/backward seek, visibility, bounded scripted worlds, cast cleanup and studio isolation.');

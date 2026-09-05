@@ -4,26 +4,41 @@ import {findRoute} from './navigation.js';
 import {sampleStory} from './story-script.js';
 import {createRandom} from './random.js';
 
-// The supplied plan maps 35 drawing pixels to one body length in world XY.
+// Keep the existing world coordinates used by room probes and story observers.
 export const point = (x, y) => ({ x: (x - 335) / 35, y: (270 - y) / 35 });
-export const outline = [[90,240],[328,25],[590,207],[505,484],[201,497]].map(p => point(...p));
+// Trace the supplied 1628 × 1304 plan with one uniform scale (75.25 px/body length).
+const planPoint = (x,y) => point(90+(x-218)/2.15,25+(y-65)/2.15);
+export const outline = [[218,527],[731,65],[1291,461],[1111,1050],[458,1080]].map(p=>planPoint(...p));
 export const palette = { outer: '#939c83', west: '#b3ac91', study: '#92a092', bedroom: '#b49f8d', service: '#a5a681', lower: '#a5a58e', player: '#678953' };
 const wallData = [
-  [90,240,328,25,'outer'],[328,25,590,207,'outer'],[590,207,572,267,'outer'],
-  [563,294,505,484,'outer'],[505,484,201,497,'outer'],[201,497,163,431,'outer'],[137,365,90,240,'outer'],
-  [232,112,278,167,'west'],[278,167,264,181,'west'],[170,168,223,225,'west'],[223,225,209,240,'west'],
-  [90,240,171,268,'west'],[171,268,178,255,'west'],[171,268,177,282,'west'],[128,342,187,316,'west'],[187,316,181,303,'west'],
-  [328,25,335,166,'study'],[335,166,375,183,'study'],[329,125,316,139,'study'],[408,195,455,214,'study'],
-  [463,120,457,143,'bedroom'],[452,187,440,223,'bedroom'],[439,212,465,223,'bedroom'],[497,236,572,267,'bedroom'],
-  [422,240,403,305,'service'],[399,325,392,346,'service'],[387,368,380,394,'service'],
-  [418,255,563,294,'service'],[409,285,549,331,'service'],[411,272,528,314,'service'],[380,385,522,424,'service'],
-  [368,418,350,437,'lower'],[350,437,355,492,'lower'],[178,452,202,445,'lower'],
-  [242,444,281,442,'lower'],[307,439,329,439,'lower'],[329,439,334,491,'lower'],[254,443,258,493,'lower']
+  [218,527,731,65,'outer'],[731,65,1291,461,'outer'],[1291,461,1247,598,'outer'],
+  [1231,646,1111,1050,'outer'],[1111,1050,458,1080,'outer'],[458,1080,387,936,'outer'],[320,792,218,527,'outer'],
+  [307,800,335,786,'outer'],[373,943,403,926,'outer'],[1232,597,1247,598,'outer'],
+  [508,256,620,376,'west'],[586,409,642,360,'west'],[378,377,489,495,'west'],[451,531,519,469,'west'],
+  [218,527,389,590,'west'],[389,590,409,566,'west'],[389,590,399,620,'west'],[300,750,428,699,'west'],[428,699,416,666,'west'],
+  [731,65,745,357,'study'],[745,357,829,398,'study'],[740,275,700,314,'study'],[829,398,833,391,'study'],
+  [900,432,1002,479,'bedroom'],[1024,272,1009,316,'bedroom'],[970,420,947,487,'bedroom'],[1002,479,1005,469,'bedroom'],
+  [1092,522,1247,589,'bedroom'],[1089,530,1098,508,'bedroom'],
+  [932,516,889,672,'service'],[878,712,867,752,'service'],[851,815,839,856,'service'],
+  [921,555,983,580,'service'],[1052,598,1231,646,'service'],[902,629,1198,730,'service'],[846,837,1146,914,'service'],
+  [815,910,778,949,'lower'],[778,949,787,1065,'lower'],[405,973,468,969,'lower'],
+  [542,962,629,959,'lower'],[691,952,729,953,'lower'],[729,953,738,1067,'lower'],[575,961,582,1074,'lower']
 ];
 export const labels = [
-  ['客厅',320,269,'main-label','DRAWING ROOM'],['我的书房',379,106,'',''],['我的卧室',506,189,'',''],
-  ['孩子们的房间',223,252,'small-label',''],['妻子的房间',489,286,'small-label',''],['仆役房',490,397,'small-label',''],
-  ['地窖',427,454,'',''],['孙子们的房间',256,421,'small-label',''],['入口',124,401,'small-label',''],['入口',584,284,'small-label',''],['我的妻子',285,373,'small-label','']
+  ['客厅',701,605,'main-label'],['书房',860,209,''],['卧室',1130,396,''],
+  ['西侧卧房',560,512,'small-label'],['侧卧',1080,568,'small-label'],['小卧室',1048,666,'small-label'],
+  ['服务间',1020,875,'small-label'],['地窖',951,987,''],['南侧卧房',593,915,'small-label'],
+  ['西入口',288,865,'small-label'],['东入口',1310,621,'small-label'],
+].map(([name,x,y,cls])=>({name,...planPoint(x,y),cls}));
+const houseResidents=[
+  ...[[280,120,5,.78],[221,175,5,.78],[162,226,5,.72],[144,300,5,.60],[217,470,6,.5],[292,464,6,.62]]
+    .map(([x,y,n,size])=>({...point(x,y),type:`regular-${n}`,size,angle:.25})),
+  ...[[480,339],[472,362],[465,385]].map(([x,y])=>({...point(x,y),type:'narrow-triangle',angle:2.9})),
+  {...point(283,360),type:'woman',angle:.3},
+  {...planPoint(1040,645),type:'woman',size:.8,angle:-.35},
+  {...point(354,137),type:'regular-3',size:.53,angle:2.7},
+  {...point(202,534),type:'narrow-triangle',angle:-.16},
+  {...point(511,528),type:'narrow-triangle',angle:3.45},
 ];
 let initialized;
 export async function createSimulation({layout='house',wandering=layout==='house',pathfinding=false,residentKilling=false,scripted=false}={}) {
@@ -37,17 +52,27 @@ export async function createSimulation({layout='house',wandering=layout==='house
   const events = new RAPIER.EventQueue(true);
   const entities = [], walls = [], byCollider = new Map();
   // Initial layout extents only: empty space has no invisible collision fence.
-  const parade=layout==='parade',maskTest=layout==='mask',stars=layout==='stars',fieldRadius=MASK_FIELD.rings*MASK_FIELD.spacing;
-  const bounds=stars?{x:3000,y:3000}:parade?{x:58,y:38}:maskTest?{x:fieldRadius,y:fieldRadius}:{x:12,y:10};
-  const home=parade?{x:0,y:-35}:(maskTest||stars)?{x:0,y:0}:point(319,302);
+  const parade=layout==='parade',neighborhood=layout==='neighborhood',maskTest=layout==='mask',stars=layout==='stars',fieldRadius=MASK_FIELD.rings*MASK_FIELD.spacing;
+  const bounds=stars?{x:3000,y:3000}:parade?{x:70,y:44}:neighborhood?{x:28,y:23}:maskTest?{x:fieldRadius,y:fieldRadius}:{x:12,y:10};
+  const home=parade?{x:0,y:-35}:neighborhood?{x:-27,y:-2}:(maskTest||stars)?{x:0,y:0}:point(319,302);
+  const houses=(layout==='house'?[[0,0,0]]:neighborhood?[[-18,11,0],[18,4,0],[-7,-13,Math.PI]]:[])
+    .map(([x,y,angle])=>{
+      const c=Math.cos(angle),s=Math.sin(angle),transform=p=>({x:x+c*p.x-s*p.y,y:y+s*p.x+c*p.y});
+      return {x,y,angle,transform,outline:outline.map(transform)};
+    });
+  const places=layout==='house'?labels:neighborhood?[
+    ...houses.map((house,i)=>({name:`${i+1}号住宅`,...house.transform(point(320,269)),cls:'small-label'})),
+    {name:'街道',x:1,y:-1,cls:'main-label'},
+    {name:'巷口',x:-17,y:-2,cls:'small-label'},
+  ]:[];
   const walkers=new Map();
   const walkRandom=createRandom(731);
   let nextId=0, aim=null, walkTarget=null, blockedTime=0;
   let route=[],routeSearch=null,routeCheck=0,walkStatus='idle';
-  for (const [x1,y1,x2,y2,kind] of layout==='house'?wallData:[]) {
-    const a=point(x1,y1), b=point(x2,y2), length=Math.hypot(b.x-a.x,b.y-a.y), angle=Math.atan2(b.y-a.y,b.x-a.x);
+  for (const house of houses)for (const [x1,y1,x2,y2,kind] of wallData) {
+    const a=house.transform(planPoint(x1,y1)), b=house.transform(planPoint(x2,y2)), length=Math.hypot(b.x-a.x,b.y-a.y), angle=Math.atan2(b.y-a.y,b.x-a.x);
     const collider=world.createCollider(RAPIER.ColliderDesc.cuboid(length/2,.04).setTranslation((a.x+b.x)/2,(a.y+b.y)/2).setRotation(angle).setContactSkin(.003).setFriction(.2).setRestitution(0));
-    const item={a,b,length,angle,kind,color:palette[kind],collider};
+    const item={a,b,length,angle,kind,color:palette[kind],collider,house};
     walls.push(item); byCollider.set(collider.handle,item);
   }
   // The studio chooses instances and poses. Character owns shape, mass,
@@ -65,14 +90,14 @@ export async function createSimulation({layout='house',wandering=layout==='house
   // Circumcircle leaves room to turn at corners, with a small steering margin.
   const walkingShape=new RAPIER.Ball(player.radius+.04);
   const castWalk=(a,b)=>world.castShape(a,0,{x:b.x-a.x,y:b.y-a.y},walkingShape,0,1,false,undefined,undefined,player.collider);
-  if(layout==='house'&&!scripted){
-  for (const [x,y,n,size] of [[280,120,5,.78],[221,175,5,.78],[162,226,5,.72],[144,300,5,.60],[217,470,6,.5],[292,464,6,.62]]) addEntity({...point(x,y),type:`regular-${n}`,size,angle:.25});
-  for (const [x,y] of [[480,339],[472,362],[465,385]]) addEntity({...point(x,y),type:'narrow-triangle',angle:2.9,name:'仆役'});
-  addEntity({...point(283,360),type:'woman',angle:.3,name:'妻子'});
-  addEntity({...point(354,137),type:'regular-3',size:.53,angle:2.7,name:'访客'});
-  addEntity({...point(202,534),type:'narrow-triangle',angle:-.16,name:'门外警卫'});
-  addEntity({...point(511,528),type:'narrow-triangle',angle:3.45,name:'门外警卫'});
+  function housePopulation(total=houses.length*houseResidents.length){
+    // Interleave households so even a small population occupies the whole block.
+    for(let i=0;i<Math.min(total,houses.length*houseResidents.length);i++){
+      const house=houses[i%houses.length],resident=houseResidents[Math.floor(i/houses.length)];
+      addEntity({...resident,...house.transform(resident),angle:house.angle+resident.angle});
+    }
   }
+  if(!scripted)housePopulation();
   function fieldPopulation(total){
     if(stars){
       for(const p of makeCrowd(total,{nearby:true}))addEntity({...p,type:'regular-5',shape:{kind:'regular',sides:p.sides},role:'sample'});
@@ -239,19 +264,28 @@ export async function createSimulation({layout='house',wandering=layout==='house
     count=count||defaultPopulation;
     // Placement advances physics to refresh queries, so pause existing motion first.
     for(const e of entities)e.stop();
-    for(const e of [...entities])if(e.role==='crowd'||(maskTest||stars)&&e!==player)remove(e);
+    for(const e of [...entities])if(e.role==='crowd'||(maskTest||stars||houses.length)&&e!==player)remove(e);
     if(maskTest||stars){fieldPopulation(count-1);world.step(events);events.clear();return entities.length;}
+    if(houses.length)housePopulation(count-1);
     if(parade){
-      // A fixed 50 × 40 arrangement leaves a central avenue and cross aisles.
-      // Spaced slots need no rejection search or physics step per new resident.
+      // A 120-degree fan faces the viewing point. Equal arc-length spacing
+      // leaves a central avenue, two radial aisles and three cross aisles.
+      const slots=[];
+      for(let row=0;row<40;row++){
+        const radius=10+row*1.5+Math.floor(row/10)*2.5,central=Math.asin(3.6/radius),aisle=1.2/radius;
+        const sectors=[[-Math.PI/3,-Math.PI/6-aisle],[-Math.PI/6+aisle,-central],[central,Math.PI/6-aisle],[Math.PI/6+aisle,Math.PI/3]];
+        for(const [start,end] of sectors){
+          const steps=Math.floor((end-start)*radius/1.4);
+          for(let column=0;column<=steps;column++){
+            const angle=start+(end-start)*(steps?column/steps:.5);
+            slots.push({x:Math.sin(angle)*radius,y:home.y+Math.cos(angle)*radius,angle:-Math.PI/2-angle,row,column});
+          }
+        }
+      }
       const total=Math.min(2000,Math.max(1,count))-1;
       for(let i=0;i<total;i++){
-        const slot=Math.floor(i*2000/total),row=Math.floor(slot/50),column=slot%50;
-        const side=column<25?-1:1,k=column%25;
-        const x=side*(3+(k+.5)*1.5+Math.floor(k/5)*1.5+(row%2)*.35);
-        const y=(row-19.5)*1.5+(Math.floor(row/10)-1.5)*2;
-        addEntity({x,y,type:characterTypes[(row+column)%characterTypes.length].id,size:.65,
-          angle:((row+column)%6)*Math.PI/3,role:'crowd'});
+        const {x,y,angle,row,column}=slots[Math.floor(i*slots.length/total)];
+        addEntity({x,y,angle,type:characterTypes[(row+column)%characterTypes.length].id,size:.65,role:'crowd'});
       }
       world.step(events);dispatchContacts();
       return entities.filter(e=>e.state!=='dead').length;
@@ -262,7 +296,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
     let remaining=count-entities.filter(e=>e.state!=='dead').length;
     for(let attempts=0;remaining>0&&attempts<20000;attempts++) {
       const spread=Math.max(1,Math.sqrt(count/300));
-      const p={x:(random()-.5)*20*spread,y:(random()-.5)*16*spread};
+      const p={x:(random()-.5)*(neighborhood?52:20)*spread,y:(random()-.5)*(neighborhood?40:16)*spread};
       if(occupied(p,.26))continue;
       addEntity({...p,type:characterTypes[Math.floor(random()*characterTypes.length)].id,size:.5,angle:random()*Math.PI*2,role:'crowd'});
       remaining--;world.step(events);dispatchContacts();
@@ -396,6 +430,6 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   world.step(events);events.clear();
   if(parade&&!scripted)population(1000);
-  return {get world(){return world;},events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,setScriptActors,applyScriptFrame,seekScript,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
+  return {get world(){return world;},events,player,entities,walls,houses,labels:places,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,setScriptActors,applyScriptFrame,seekScript,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
 }
 export {RAPIER};

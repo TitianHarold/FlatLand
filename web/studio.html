@@ -13,22 +13,26 @@
       <div class="app-header-actions"><span id="save-status" role="status">自动保存</span><button id="export-config" type="button" aria-haspopup="dialog">导出配置</button><button id="restore" class="quiet-button" title="将所有参数恢复为默认值，保留当前场景">恢复默认</button><label class="theme-toggle" title="切换界面主题"><input class="theme-switch" data-ui-theme-toggle type="checkbox" role="switch" aria-label="夜间模式" checked><span class="theme-symbols" aria-hidden="true"><img class="theme-sun" src="./icons/sun.svg" alt=""><img class="theme-moon" src="./icons/moon.svg" alt=""></span></label></div>
     </header>
     <aside class="library" aria-label="场景库">
-      <div class="library-heading"><span>场景库</span><span class="tiny">SCENES / 04</span></div>
+      <div class="library-heading"><span>场景库</span><span class="tiny">05</span></div>
       <button class="scene-card selected" data-scene="house" aria-pressed="true">
-        <div class="scene-thumb house-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><path d="m80 8 37 25-14 33H55L43 33Z"/><path d="M57 24v30m0-14h23m0-32v34m0 12v12m0-32h33M43 42h14m34-8v32M57 54h34"/><path class="inhabitant" d="m68 45 5 4-2 6h-6l-2-6Zm30-5 4 7h-8Z"/></svg><span>01</span></div>
-        <div class="scene-card-caption"><strong>一座房子</strong><span>空间 · 门洞 · 日常观察</span></div>
+        <div class="scene-thumb house-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><g transform="translate(40 1) scale(.064)"><path d="M218 527 731 65 1291 461 1247 598 M1231 646 1111 1050 458 1080 387 936 M320 792 218 527 M508 256 620 376 M586 409 642 360 M378 377 489 495 M451 531 519 469 M218 527 389 590 409 566 M389 590 399 620 M300 750 428 699 416 666 M731 65 745 357 829 398 M740 275 700 314 M900 432 1002 479 M1024 272 1009 316 M970 420 947 487 M1092 522 1247 589 M932 516 889 672 M878 712 867 752 M851 815 839 856 M921 555 983 580 M1052 598 1231 646 M902 629 1198 730 M846 837 1146 914 M815 910 778 949 787 1065 M405 973 468 969 M542 962 629 959 M691 952 729 953 738 1067 M575 961 582 1074" style="stroke-width:14"/></g></svg><span>01</span></div>
+        <div class="scene-card-caption"><strong>我的家</strong><span>空间 · 门洞 · 日常观察</span></div>
+      </button>
+      <button class="scene-card" data-scene="neighborhood" aria-pressed="false">
+        <div class="scene-thumb neighborhood-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><defs><g id="block-home"><path d="m0 12 12-11 13 9-2 7m-1 3-2 8H5L2 22m0-4L0 12m12-11v13l8 3m-9-4L5 7m6 16v5m5-10 6 2"/></g></defs><use href="#block-home" x="29" y="1"/><use href="#block-home" x="106" y="16"/><g transform="translate(124 72) rotate(180)"><use href="#block-home" x="51" y="1"/></g><path d="M18 39 75 32 143 53" stroke-dasharray="2 4"/></svg><span>02</span></div>
+        <div class="scene-card-caption"><strong>小社区</strong><span>三户人家 · 串门与街巷</span></div>
       </button>
       <button class="scene-card" data-scene="parade" aria-pressed="false">
-        <div class="scene-thumb parade-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><defs><pattern id="ranks" width="14" height="13" patternUnits="userSpaceOnUse"><path d="m5 3 4 7H1Z" fill="none" stroke="#c79c69" stroke-width=".8"/><path d="m5 3 4 7" fill="none" stroke="#7a9f9e" stroke-width=".8"/></pattern></defs><path d="M17 12h52v49H17zm74 0h52v49H91Z" fill="url(#ranks)"/><path d="M80 7v58" stroke="#b8bcad" stroke-dasharray="2 4"/></svg><span>02</span></div>
-        <div class="scene-card-caption"><strong>色彩检阅场</strong><span>千人队列 · 开阔视野</span></div>
+        <div class="scene-thumb parade-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><g fill="none" stroke-dasharray="1 3"><path d="M25 33A64 64 0 0 1 135 33 M32 37A56 56 0 0 1 128 37 M39 41A48 48 0 0 1 121 41 M46 45A40 40 0 0 1 114 45 M53 49A32 32 0 0 1 107 49 M60 53A24 24 0 0 1 100 53 M67 57A16 16 0 0 1 93 57"/></g><path d="M80 64V4m0 60L48 9m32 55 32-55" stroke-dasharray="2 4"/><circle class="inhabitant" cx="80" cy="64" r="2"/></svg><span>03</span></div>
+        <div class="scene-card-caption"><strong>彩色阅兵场</strong><span>扇形队列 · 千人阅兵</span></div>
       </button>
       <button class="scene-card" data-scene="stars" aria-pressed="false">
-        <div class="scene-thumb stars-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><defs><pattern id="star-dots" width="19" height="17" patternUnits="userSpaceOnUse"><circle cx="5" cy="3" r=".7" fill="#bfa46e"/><circle cx="14" cy="11" r="1" fill="#94a9a1"/><circle cx="2" cy="14" r=".5" fill="#95a5b6"/></pattern></defs><ellipse cx="82" cy="35" rx="67" ry="24" fill="url(#star-dots)" stroke="none"/><path d="m34 52 48-30 48 30" stroke-dasharray="2 3"/><circle cx="82" cy="22" r="2" fill="#829972"/></svg><span>03</span></div>
+        <div class="scene-thumb stars-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><defs><pattern id="star-dots" width="19" height="17" patternUnits="userSpaceOnUse"><circle cx="5" cy="3" r=".7" fill="#bfa46e"/><circle cx="14" cy="11" r="1" fill="#94a9a1"/><circle cx="2" cy="14" r=".5" fill="#95a5b6"/></pattern></defs><ellipse cx="82" cy="35" rx="67" ry="24" fill="url(#star-dots)" stroke="none"/><path d="m34 52 48-30 48 30" stroke-dasharray="2 3"/><circle cx="82" cy="22" r="2" fill="#829972"/></svg><span>04</span></div>
         <div class="scene-card-caption"><strong>星野</strong><span>远近居民 · 疏密对照</span></div>
       </button>
       <button class="scene-card" data-scene="mask" aria-pressed="false">
-        <div class="scene-thumb mask-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><g stroke-dasharray="1 3"><circle cx="80" cy="37" r="8"/><circle cx="80" cy="37" r="15"/><circle cx="80" cy="37" r="22"/><circle cx="80" cy="37" r="29"/></g><path d="m55 22 25 15 25-15" stroke="#819671"/><circle cx="80" cy="37" r="2" fill="#829972"/><path d="m78 13 4 0-2 3Zm20 24 4 0-2 3Zm-30 16 4 0-2 3Z" stroke="#c4a475"/></svg><span>04</span></div>
-        <div class="scene-card-caption"><strong>同心圆遮罩</strong><span>密集标本 · 远近对照</span></div>
+        <div class="scene-thumb mask-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><g stroke-dasharray="1 3"><circle cx="80" cy="37" r="8"/><circle cx="80" cy="37" r="15"/><circle cx="80" cy="37" r="22"/><circle cx="80" cy="37" r="29"/></g><path d="m55 22 25 15 25-15" stroke="#819671"/><circle cx="80" cy="37" r="2" fill="#829972"/><path d="m78 13 4 0-2 3Zm20 24 4 0-2 3Zm-30 16 4 0-2 3Z" stroke="#c4a475"/></svg><span>05</span></div>
+        <div class="scene-card-caption"><strong>环形广场</strong><span>站在人群中央 · 观察远近</span></div>
       </button>
       <div class="library-heading experiments-heading"><span>基础实验</span><span class="tiny">STUDIES</span></div>
       <button class="study-item" data-scene="characters" aria-pressed="false"><span class="study-icon">△</span><span>角色与碰撞<small>形状、尺寸与接触</small></span></button>
@@ -42,7 +46,7 @@
     </main>
     <section class="inspector" aria-label="发光方式、光线衰减、散射模糊、镜头与行为配置"><div id="inspector-content"></div></section>
   </div>
-  <dialog id="about-dialog"><div class="dialog-title"><button id="close-about" aria-label="关闭说明">×</button></div><h2>游乐场说明</h2><p>俯视单击空白让观察者走过去，双击空白瞬移。居民视角单击或拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>居民配色</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">游乐场配置自动保存在当前浏览器，刷新或重新打开时恢复，不影响故事。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
+  <dialog id="about-dialog"><div class="dialog-title"><button id="close-about" aria-label="关闭说明">×</button></div><h2>游乐场说明</h2><p>俯视单击空白让观察者走过去，双击空白瞬移。居民视角单击或拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人彩色阅兵场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>居民配色</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">游乐场配置自动保存在当前浏览器，刷新或重新打开时恢复，不影响故事。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
   <dialog id="export-dialog" aria-labelledby="export-title"><div class="export-heading"><h2 id="export-title">导出配置</h2><button id="close-export" type="button">关闭</button></div><p>保存或分享游乐场配置。故事使用各自的配置。</p><textarea id="export-json" readonly rows="15" spellcheck="false" aria-label="游乐场配置 JSON"></textarea><div class="export-actions"><p id="export-status" role="status"></p><button id="copy-export" type="button">复制</button></div></dialog>
   <script type="module" src="./src/studio.js"></script>
 </body>

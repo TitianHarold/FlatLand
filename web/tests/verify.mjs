@@ -63,8 +63,9 @@ for(const layout of ['stars','mask']){
 }
 }
 const sim=await createSimulation({wandering:false});
-assert.equal(sim.entities.length,14);
-assert.equal(sim.walls.length,38);
+assert.equal(sim.entities.length,15);
+assert.equal(sim.walls.length,43);
+assert(sim.labels.every(({name})=>!/(我的|妻子|孩子|孙子|女儿|警察|听差)/.test(name)),'Map labels identify places, not residents');
 for(const e of sim.entities){
   assert(e instanceof Character,'Studio residents must be shared Character instances');
   assert(e.size>=MIN_SIZE&&e.size<=MAX_SIZE,'Studio sizes must stay in the character lab range');
@@ -194,6 +195,35 @@ for(let i=0;i<60;i++)roaming.step();
 console.log(JSON.stringify({checks:'default wandering, observer input only, obstacle clearance, 300 living residents, pause/resume, dead bodies stay still, population cleanup',movedCrowd,physicsMsPerStep:Number(roamingMs.toFixed(3))},null,2));
 roaming.dispose();
 
+// Three transformed copies keep independent building-wide lighting and working
+// doorways. Population controls must also reach counts below the preset.
+{
+const block=await createSimulation({layout:'neighborhood',wandering:false});
+assert.equal(block.houses.length,3);assert.equal(block.entities.length,43);
+const boundaries=houseBoundaries(block),buildings=new Set(boundaries.map(w=>w.object));
+assert.equal(buildings.size,3,'Each home has its own optical reference');
+assert([...buildings].every(building=>building.boundaries.length===43));
+for(const house of block.houses){
+  assert(block.relocate(house.transform(point(182,393))),'Every wide entrance is traversable, including rotated homes');
+  assert(!block.relocate(house.transform(point(328,60))),'Every home has physical walls');
+}
+assert(block.relocate(block.home));
+for(const count of [14,300,0]){
+  const total=count||43;assert.equal(block.population(count),total);assert.equal(block.world.bodies.len(),total);
+  for(const e of block.entities){
+    block.world.intersectionsWithShape(e.body.translation(),e.body.rotation(),e.collider.shape,()=>{
+      assert.fail('Community residents must not start inside a wall or neighbour');
+    },undefined,undefined,e.collider);
+  }
+}
+const poses=block.entities.map(e=>({...e.body.translation()}));
+for(let i=0;i<60;i++)block.step();
+block.entities.forEach((e,i)=>assert.deepEqual({...e.body.translation()},poses[i]));
+assert(createSight(block)(640).some((v,i)=>i%4!==3&&v>0),'Community geometry participates in resident vision');
+block.dispose();
+console.log('Community: three houses, separate optical references, wall/door collisions, population replacement and resident vision passed.');
+}
+
 // The larger scene uses real Character bodies, with clear lanes and no stale
 // colliders when the population is replaced. A bounding-circle query is stricter
 // than the actual polygons at these initial, deliberately separated positions.
@@ -208,7 +238,13 @@ for(const count of [1000,2000,1000]){
   for(const e of parade.entities){
     assert(e instanceof Character);
     const p=e.body.translation();
-    if(e!==parade.player)assert(Math.abs(p.x)-e.radius>3,'Keep the central avenue clear');
+    if(e!==parade.player){
+      assert(Math.abs(p.x)-e.radius>3,'Keep the central avenue clear');
+      const dy=p.y-paradeEye.y,radius=Math.hypot(p.x,dy);
+      assert(radius>=9.99&&radius<=76.01&&Math.abs(Math.atan2(p.x,dy))<=Math.PI/3+1e-6,'The formation occupies a 120-degree fan around the viewing point');
+      const angle=e.body.rotation();
+      assert(Math.cos(angle)*(-p.x)+Math.sin(angle)*(-dy)>radius-.001,'Residents face the viewing point');
+    }
     assert(Math.abs(p.x)+e.radius<parade.bounds.x&&Math.abs(p.y)+e.radius<parade.bounds.y);
     parade.world.intersectionsWithShape(p,0,new RAPIER.Ball(e.radius+.001),()=>{
       assert.fail('Initial parade residents must not overlap a neighbour or boundary');

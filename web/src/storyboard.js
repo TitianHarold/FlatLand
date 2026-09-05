@@ -6,7 +6,7 @@ import {bindPromptCopy} from './copy-prompt.js';
 
 const $=id=>document.getElementById(id),theatre=$('theatre');
 let controlsTimer,chapterAnimation,hintTimer;
-const scenes={house:'一座房子',parade:'色彩检阅场',stars:'星野',mask:'同心圆遮罩'};
+const scenes={house:'我的家',parade:'彩色阅兵场',stars:'星野',mask:'环形广场'};
 const clock=seconds=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 const storyId=new URLSearchParams(location.search).get('story');
 const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);

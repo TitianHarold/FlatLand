@@ -25,7 +25,7 @@ export function readPreset(saved){
   if(saved?.version!==1||!saved.state||typeof saved.state!=='object'||Array.isArray(saved.state))throw new Error('Invalid preset');
   const result=structuredClone(defaults),source=saved.state;
   const currentScene=Object.hasOwn(source,'currentScene')?source.currentScene:defaults.currentScene;
-  if(!['house','parade','stars','mask','characters'].includes(currentScene))throw new Error('Invalid scene');
+  if(!['house','neighborhood','parade','stars','mask','characters'].includes(currentScene))throw new Error('Invalid scene');
   for(const group of ['shared','view','behavior'])if(Object.hasOwn(source,group)&&(!source[group]||typeof source[group]!=='object'||Array.isArray(source[group])))throw new Error('Invalid configuration group');
   // Older presets chose a combined mode under one master switch.
   if(source.shared&&source.shared.scatterEnabled==null&&Object.hasOwn(source.shared,'visionEffect')){
