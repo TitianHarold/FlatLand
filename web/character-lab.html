@@ -1,11 +1,12 @@
 <!doctype html>
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f1ea"><title>平面国 · 角色实验室</title></head>
-<body>
+<body class="lab-page">
+  <header class="topbar"><a class="brand" href="./studio.html" aria-label="平面国场景工作台"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg><span>平面国 <small>FLATLAND</small></span></a><h1 class="workspace-label">角色实验室</h1><nav class="top-actions" aria-label="工作区导航"><a class="return-workspace" href="./studio.html">返回工作台</a></nav></header>
   <main>
-    <header class="lab-header"><div><span class="edition">FLATLAND / CHARACTER LAB</span><h1>角色实验室<span>形状 · 动作 · 碰撞</span></h1></div><a href="./world.html">一座房子 ↗</a></header>
+
     <section aria-labelledby="shapes-heading">
-      <div class="section-heading"><div><h2 id="shapes-heading">先看见角色本身。</h2><p>清透柔和配色：以头部轴线对称染色，从头部暖色过渡到尾部冷色，每位居民保留自己的色组。女性尾段为虚线，内部保持空心。</p></div><span class="quiet">6 种类型 · 线宽始终为 1 像素</span></div>
+      <div class="section-heading"><div><h2 id="shapes-heading">角色预览</h2><p>清透柔和配色：以头部轴线对称染色，从头部暖色过渡到尾部冷色，每位居民保留自己的色组。女性尾段为虚线，内部保持空心。</p></div><span class="quiet">6 种类型 · 线宽始终为 1 像素</span></div>
       <div class="preview-controls">
         <label for="shape-zoom">形状缩放 <output id="shape-zoom-value">100%</output><input id="shape-zoom" type="range" min="50" max="150" value="100" step="5"></label>
         <label for="shape-angle">共同转向 <output id="shape-angle-value">0°</output><input id="shape-angle" type="range" min="0" max="360" value="0"></label>
@@ -15,7 +16,7 @@
       <p class="size-note">亮端为头部，淡圆为尺寸参考。1 身长是成年标准体型的外接圆直径；幼体 0.3 身长，成年最大 1 身长。女性线段与参考圆直径等长。</p>
     </section>
     <section class="motion-section" aria-labelledby="motion-heading">
-      <div class="section-heading"><div><h2 id="motion-heading">动作，由你触发。</h2><p>选择“击杀”或“触摸”，通过前后移动、横移和转向，尝试用尖角或侧边接触对方。</p></div><button id="reset">重置实验</button></div>
+      <div class="section-heading"><div><h2 id="motion-heading">动作与碰撞</h2><p>选择“击杀”或“触摸”，通过前后移动、横移和转向，尝试用尖角或侧边接触对方。</p></div><button id="reset">重置实验</button></div>
       <div class="motion-layout">
         <div class="stage-wrap">
           <svg id="stage" viewBox="-400 -210 800 420" tabindex="0" role="application" aria-label="角色动作试验区，W S 或上下箭头前后移动，A D 或左右箭头转向，Q E 向头部左右两侧横移">

@@ -290,3 +290,13 @@ export function exposeRow({light,contrast,spread,color,reception}, {exposure=OPT
   }
   return pixels;
 }
+
+// Normalized distance -> blur radius; every curve reaches the same endpoint.
+export function scatterProgress(distance,range,curve='smooth'){
+  const x=Math.max(0,Math.min(1,distance/range));
+  if(curve==='linear')return x;
+  if(curve==='quadratic')return x*x;
+  if(curve==='exponential')return Math.expm1(4*x)/Math.expm1(4);
+  if(curve==='logarithmic')return Math.log1p(15*x)/Math.log(16);
+  return x*x*(3-2*x);
+}

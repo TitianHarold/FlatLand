@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {OPTICS_RULES,boundaryLighting,distanceAttenuation,surfaceLight,exposeLight,projectScene,exposeRow} from '../src/optics.js';
+import {OPTICS_RULES,scatterProgress,boundaryLighting,distanceAttenuation,surfaceLight,exposeLight,projectScene,exposeRow} from '../src/optics.js';
 import {resident,makeColorField,makeCrowd,paintResident} from '../src/study-scene.js';
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE} from '../src/paint.js';
 
@@ -307,3 +307,13 @@ console.log(JSON.stringify({projectionChecks:'perspective/equidistant at 60/120/
   assert.equal(surfaceLight(100,shape,{...rules,attenuationDistance:0}).reception,1);
   assert(surfaceLight(10,shape,{...rules,visionEffect:'both'}).reception<1);
 }
+
+for(const curve of ['smooth','linear','quadratic','exponential','logarithmic']){
+  assert.equal(scatterProgress(0,100,curve),0);
+  assert.equal(scatterProgress(100,100,curve),1);
+  assert.equal(scatterProgress(200,100,curve),1);
+  let previous=0;
+  for(let d=1;d<=100;d++){const value=scatterProgress(d,100,curve);assert(value>=previous&&value<=1);previous=value;}
+  assert.equal(scatterProgress(50,100,curve),scatterProgress(100,200,curve));
+}
+console.log('✓ 散射渐变连续单调，所有方式均从清晰到相同最大模糊');

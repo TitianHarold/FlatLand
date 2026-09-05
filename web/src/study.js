@@ -1,6 +1,7 @@
 import {projectScene,exposeRow,OPTICS_RULES,DEFAULT_FOV} from './optics.js';
 import {resident,paintResident,makeColorField,makeCrowd,STUDY_SHAPES} from './study-scene.js';
 import './study.css';
+import './workspace-chrome.css';
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE} from './paint.js';
 import {connectStudio} from './studio-bridge.js';
 import {MAX_SIZE,formatLength} from './measure.js';

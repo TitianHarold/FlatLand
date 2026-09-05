@@ -52,12 +52,28 @@ function verifyScatterKernel(){
   renderer.clear();renderer.render(scene,camera);const sharp=pixels();
   const near=new THREE.Vector3(1,0,.032).project(camera),far=new THREE.Vector3(20,0,.032).project(camera);
   const nx=Math.round((near.x*.5+.5)*512),fx=Math.round((far.x*.5+.5)*512);
-  scatter.render(scene,camera,{width:512,height:128},30,1);const blurred=pixels();
+  scatter.render(scene,camera,{width:512,height:128},30,30,'smooth');const blurred=pixels();
   const sample=(row,x)=>row[x*4],around=(row,x)=>Array.from({length:19},(_,i)=>sample(row,x+i-9));
   assert(around(sharp,nx).every((v,i)=>Math.abs(v-around(blurred,nx)[i])<=2),'散射中心的近处轮廓保持清晰，不向两侧发虚');
   assert(Math.max(...around(blurred,fx))<Math.max(...around(sharp,fx))*.8&&around(blurred,fx).filter(v=>v>3).length>around(sharp,fx).filter(v=>v>3).length,'同样大小的远处轮廓确实向周围平均，亮峰降低且范围变宽');
+  scatter.render(scene,camera,{width:512,height:128},40,30,'smooth');
+  assert(pixels().every((v,i)=>v===blurred[i]),'扩大可见范围不改变已可见物体的模糊程度');
+  scatter.render(scene,camera,{width:512,height:128},30,3,'smooth');const closerScatter=pixels();
+  assert(Math.max(...around(closerScatter,fx))>3&&Math.max(...around(closerScatter,fx))<Math.max(...around(blurred,fx)),'缩短散射范围增强模糊，超过散射范围的物体仍可见');
+  scatter.render(scene,camera,{width:512,height:128},10,30,'smooth');const clipped=pixels();
+  assert(around(clipped,fx).every(v=>v===0)&&around(clipped,nx).every((v,i)=>Math.abs(v-around(blurred,nx)[i])<=2),'缩短可见范围截掉远处物体，同时保持近处清晰度');
+  scatter.render(scene,camera,{width:512,height:128},0,30,'smooth');
+  assert(pixels().every((v,i)=>v===blurred[i]),'关闭衰减边界后散射仍然显示，且模糊程度不变');
+  const curvePeaks={};
+  for(const curve of ['smooth','linear','quadratic','exponential','logarithmic']){
+    scatter.render(scene,camera,{width:512,height:128},30,30,curve);
+    curvePeaks[curve]=Math.max(...around(pixels(),fx));
+    scatter.render(scene,camera,{width:512,height:128},30,3,curve);
+    assert(around(pixels(),fx).every((v,i)=>Math.abs(v-around(closerScatter,fx)[i])<=2),`${curve}：超过散射距离统一达到最大模糊`);
+  }
+  assert(curvePeaks.logarithmic<curvePeaks.linear&&curvePeaks.linear<curvePeaks.quadratic&&curvePeaks.quadratic<curvePeaks.exponential,'GPU 散射曲线改变中途模糊的渐变节奏');
   renderer.setSize(640,160);camera.aspect=4;camera.updateProjectionMatrix();
-  scatter.render(scene,camera,{width:640,height:160},30,1);
+  scatter.render(scene,camera,{width:640,height:160},30,30,'smooth');
   assert(renderer.getContext().getError()===0,'散射纹理随窗口尺寸更新，GPU 无错误');
   scatter.clear();geometry.dispose();white.dispose();renderer.dispose();renderer.forceContextLoss();
 }
@@ -223,7 +239,7 @@ window.addEventListener('message',async function ready(event){
     assert(styleRows.slice(1).every(row=>row.some((v,i)=>i%4!==3&&Math.abs(v-styleRows[0][i])>10)),'柔和与绒面实际改变明暗像素，区别于锐利高光');
     api.configure(originalLight);await nextFrame();
     const scatteringRows={};
-    api.set('contour',false);api.configure({attenuationMode:'mask',attenuationDistance:15,fog:0,detailGain:0,scatterAmount:1});
+    api.set('contour',false);api.configure({attenuationMode:'mask',attenuationDistance:15,fog:0,detailGain:0,scatterDistance:15,scatterCurve:'smooth'});
     const variation=row=>row.reduce((sum,v,i)=>sum+(i>=4&&i%4!==3?Math.abs(v-row[i-4]):0),0);
     const energy=row=>row.reduce((sum,v,i)=>sum+(i%4!==3?v:0),0);
     for(const visionEffect of ['attenuation','scatter','both']){
@@ -232,9 +248,9 @@ window.addEventListener('message',async function ready(event){
     assert(variation(scatteringRows.both)<variation(scatteringRows.attenuation),'散射实际平均相邻颜色，减小边缘突变');
     assert(energy(scatteringRows.scatter)>energy(scatteringRows.both)*1.1,'单独散射保留亮度，组合模式同时衰减光线');
     assert((await readRow(.8)).every((v,i)=>i%4===3?v===255:v===0),'散射不会把颜色漏到一维窗口之外');
-    api.configure({visionEffect:'both',scatterAmount:0});await nextFrame();
-    assert((await readRow(.5)).every((v,i)=>v===scatteringRows.attenuation[i]),'散射 0 完全旁路后处理，恢复原始衰减像素');
-    api.configure({visionEffect:'scatter',scatterAmount:1,attenuationDistance:.1});await nextFrame();
+    api.configure({visionEffect:'attenuation'});await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>v===scatteringRows.attenuation[i]),'关闭散射完全旁路后处理，恢复原始衰减像素');
+    api.configure({visionEffect:'scatter',attenuationDistance:.1});await nextFrame();
     assert((await readRow(.5)).every((v,i)=>i%4===3?v===255:v===0),'散射也不会显示视野范围以外的物体');
     api.configure({attenuationDistance:15,visionEffect:'scatter'});await nextFrame();
     const scatteredLine=await readRow(.5);api.click('sight-expanded');await until(()=>api.snapshot().stretch===1);
@@ -305,14 +321,26 @@ window.addEventListener('message',async function ready(event){
     await until(()=>panel.querySelector('#control-shared-houseEmission')?.disabled===false);
     const optics=()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().optics;
     const input=(id,value,type='input')=>{const el=panel.getElementById(id);if(el.classList.contains('choice-buttons')){el.querySelector(`button[value="${value}"]`).click();return;}el.value=value;el.dispatchEvent(new frame.contentWindow.Event(type,{bubbles:true}));};
+    const studioView=()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
+    await until(()=>studioView().canvasExtent.width>0);
+    const fittedWidth=studioView().canvasExtent.width;
+    panel.getElementById('zoom-in').click();await until(()=>studioView().canvasExtent.width<fittedWidth);
+    assert(Math.abs(studioView().canvasExtent.width*studioView().overviewZoom-fittedWidth)<1e-6,'放大画布缩小可见宽度，实际体型不变');
+    panel.getElementById('zoom-out').click();await until(()=>Math.abs(studioView().canvasExtent.width-fittedWidth)<1e-6);
+    const zoomCanvas=panel.querySelector('#preview').contentDocument.getElementById('scene');
+    zoomCanvas.dispatchEvent(new frame.contentWindow.WheelEvent('wheel',{deltaY:-100,bubbles:true,cancelable:true}));
+    await until(()=>studioView().overviewZoom>1);
+    assert(studioView().optics.attenuationDistance===25&&studioView().shapeHeight===.05,'滚轮只缩放画布，不改变遮罩和实体高度');
+    panel.getElementById('zoom-fit').click();await until(()=>studioView().overviewZoom===1&&Math.abs(studioView().canvasExtent.width-fittedWidth)<1e-6);
+    assert(!panel.getElementById('control-shared-scatterAmount'),'散射删除百分比，改用渐变曲线');
     input('control-view-windowHeight','20');await nextFrame();
     const view=panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
     assert(panel.querySelector('#control-view-projection').textContent==='画面未矫正画面矫正','镜头名称对应直线接收未矫正、等角展开已矫正');
     assert(view.shapeHeight===.05&&view.stretch===0&&!panel.getElementById('control-view-shapeHeight'),'工作台固定 0.05 身长，并删除基础高度滑条');
     assert(!panel.querySelector('#control-shared-finish,#control-shared-contour,#control-view-stretchHeight,#control-view-stretchStyle,#control-view-particleDensity'),'移除成像、辨形、拉伸幅度、特效和粒子设置');
-    assert([...panel.querySelectorAll('.config-panel h2')].map(el=>el.textContent).join('/')==='发光方式/视野/镜头/行为','四个面板各司其职');
+    assert([...panel.querySelectorAll('.config-panel h2')].map(el=>el.textContent).join('/')==='发光方式/光线衰减/散射模糊/镜头/行为','五个面板各司其职');
     assert(panel.querySelectorAll('.paint-grid input[type=color]').length===6&&!/头部|中段|尾部/.test(panel.querySelector('.paint-grid').textContent),'五枚主题色与独立建筑颜色，删除渐变分组');
-    assert([...panel.querySelectorAll('#inspector-content select')].every(select=>select.options.length>2)&&panel.querySelectorAll('.choice-buttons').length===6,'所有二选一下拉菜单改为并排按钮');
+    assert([...panel.querySelectorAll('#inspector-content select')].every(select=>select.options.length>2)&&panel.querySelectorAll('.choice-buttons').length===5,'所有二选一下拉菜单改为并排按钮');
     assert(!panel.getElementById('control-shared-fog')&&optics().fog===0,'统一工作台只有一套距离效果，没有隐藏的空气吸光');
     assert(!panel.querySelector('[data-light-scope]'),'角色与建筑直接调节，不再切换全局或类别页');
     assert(!/dB|参考亮度/.test(panel.querySelector('#palette-title').closest('section').textContent),'增益面板去掉单位和参考说明');
@@ -382,7 +410,8 @@ window.addEventListener('message',async function ready(event){
     const rangeToggle=panel.getElementById('control-view-showRange');rangeToggle.checked=false;rangeToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
     await until(()=>!panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().rangeGuide.visible);
     assert(optics().attenuationDistance===40,'工作台可以关闭虚线圆，保留遮罩');
-    assert(panel.getElementById('scene-controls').textContent.includes('半径 200 身长 · 直径 400 身长'),'同心圆场景标明完整场景尺度');
+    await until(()=>panel.getElementById('scene-controls').textContent.includes('俯视画布'));
+    assert(!/半径|直径|约/.test(panel.getElementById('scene-controls').textContent),'同心圆也统一标明俯视画布宽高');
     assert(!panel.querySelector('details,summary,#focus-preview,#runtime-status,#coordinates,#interaction-help,[data-key],[data-action="mask-compare"],[data-mask-radius]'),'去掉折叠入口、重复动作和底部提示条');
     const overlay=panel.getElementById('scene-controls'),previewBox=panel.getElementById('preview').getBoundingClientRect(),facts=panel.querySelector('.scene-facts').getBoundingClientRect();
     assert(overlay.closest('.viewport-wrap')&&facts.top>=previewBox.top&&facts.bottom<previewBox.bottom,'场景尺度直接叠在黑色视口里');
@@ -438,7 +467,16 @@ window.addEventListener('message',async function ready(event){
     await until(()=>stars().windowBlend===1);
     await until(()=>!panel.getElementById('expand-shapes').disabled);
     panel.getElementById('expand-shapes').click();await until(()=>stars().stretch===1);
-    input('control-shared-visionEffect','both','change');input('control-shared-scatterAmount','75');
+    const scatteringToggle=panel.getElementById('control-shared-scatterEnabled');scatteringToggle.click();input('control-shared-scatterCurve','logarithmic','change');
+    assert(scatteringToggle.closest('section')!==panel.getElementById('control-shared-attenuationEnabled').closest('section'),'衰减与散射有各自的面板与开关');
+    const activeAttenuation=panel.getElementById('control-shared-attenuationEnabled');activeAttenuation.click();
+    assert(optics().visionEffect==='scatter'&&optics().attenuationDistance===0&&!panel.getElementById('control-shared-scatterDistance').disabled,'关闭衰减后，散射仍独立启用');
+    activeAttenuation.click();
+    input('control-shared-scatterDistance','8');
+    assert(optics().scatterDistance===256&&optics().attenuationDistance===3000,'散射范围按倍数调节，不改变可见范围');
+    input('control-shared-scatterDistance-number','120');
+    input('control-shared-attenuationDistance-number','4096');
+    assert(optics().scatterDistance===120&&optics().attenuationDistance===4096,'两个距离输入框互不联动');
     panel.querySelector('#preview').contentDocument.getElementById('map-lock').click();
     input('control-view-windowHeight','14');
     assert(!stars().mapLocked,'切换小地图朝向后立即调节镜头，也不会恢复旧值');
@@ -450,9 +488,12 @@ window.addEventListener('message',async function ready(event){
       panel.querySelector(`[data-scene="${scene}"]`).click();
       await until(()=>panel.getElementById('control-view-projection')?.querySelector('button')?.disabled===false);
       await until(()=>stars().stretch===1);
-      assert(JSON.stringify(fields())===sharedFields,`${scene}：四面板控件与全部参数跨场景一致`);
+      assert(JSON.stringify(fields())===sharedFields,`${scene}：五面板控件与全部参数跨场景一致`);
+      const size=stars().canvasExtent;
+      assert(size.width>0&&size.height>0&&Math.abs(size.width/size.height-stars().cameraAspect)<1e-6,`${scene}：画布宽高来自实际镜头和窗口比例`);
+      assert(stars().overviewZoom===1,`${scene}：切换场景默认缩放至合适`);
       assert(!stars().mapLocked,`${scene}：小地图保持朝向跟随`);
-      assert(optics().visionEffect==='both'&&optics().scatterAmount===.75,`${scene}：散射方式与程度跨场景保持一致`);
+      assert(optics().visionEffect==='both'&&optics().scatterCurve==='logarithmic'&&optics().scatterDistance===120&&optics().attenuationDistance===4096,`${scene}：散射曲线与独立距离跨场景保持一致`);
       assert(stars().projection==='equidistant'&&stars().population===100&&stars().wandering&&stars().interaction==='kill',`${scene}：共用参数实际驱动镜头、人数、运动与接触`);
       assert(stars().paint.colors[0]==='#fedcba'&&stars().paint.wall==='#123456',`${scene}：主题色和建筑色跨场景保留`);
     }
@@ -462,10 +503,13 @@ window.addEventListener('message',async function ready(event){
     await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().stretch===1);
     assert(JSON.stringify(fields())===sharedFields&&!stars().mapLocked,'刷新恢复整套通用参数，包括填满状态和小地图朝向');
     const saved=JSON.parse(localStorage.getItem('flatland-studio-preset-v1'));
+    delete saved.state.shared.scatterDistance;
+    delete saved.state.shared.scatterEnabled;saved.state.shared.visionEffect='both';
     saved.state.shared.detailGain=-2;localStorage.setItem('flatland-studio-preset-v1',JSON.stringify(saved));
     await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='../studio.html';});panel=frame.contentDocument;
     await until(()=>panel.getElementById('control-shared-detailGain')?.disabled===false);
     assert(panel.getElementById('control-shared-detailGain').value==='0'&&!optics().displayEnhancement&&optics().houseEmission===4,'旧负区分度迁移为关闭，保留其余配置');
+    assert(optics().scatterDistance===4096&&optics().attenuationDistance===4096&&optics().visionEffect==='both','旧配置缺少散射距离时仅初始化为原可见距离');
     document.title='PASS · 摄影棚渲染检查';
   }catch(error){output.textContent+=`\nFAIL · ${error.message}`;document.title='FAIL · 摄影棚渲染检查';console.error(error);}
 });

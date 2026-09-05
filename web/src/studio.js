@@ -1,6 +1,7 @@
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE,DEFAULT_WALL_COLOR,setCustomPaintStyle,setPaintMode,setWallColor} from './paint.js';
-import {OPTICS_RULES,distanceAttenuation} from './optics.js';
+import {OPTICS_RULES,distanceAttenuation,scatterProgress} from './optics.js';
 import {LENGTH_UNIT,formatLength} from './measure.js';
+import './workspace-chrome.css';
 import './studio.css';
 
 const $=id=>document.getElementById(id),frame=$('preview'),controls=document.querySelector('.studio-shell');
@@ -13,7 +14,7 @@ const scenes={
 const defaults={
   currentScene:'house',
   shared:{paintStyle:DEFAULT_PAINT_STYLE,customPaint:{colors:[...PAINT_STYLES.custom.colors]},paintMode:'solid',wallColor:DEFAULT_WALL_COLOR,coloring:true,
-    exposure:OPTICS_RULES.exposure,detailGain:1,detailStyle:'soft',visionEffect:'attenuation',scatterAmount:60,attenuationEnabled:true,attenuationDistance:25,attenuationCurve:OPTICS_RULES.attenuationCurve,
+    exposure:OPTICS_RULES.exposure,detailGain:1,detailStyle:'soft',scatterEnabled:false,scatterDistance:25,scatterCurve:'smooth',attenuationEnabled:true,attenuationDistance:25,attenuationCurve:OPTICS_RULES.attenuationCurve,
     residentEmission:OPTICS_RULES.materials.resident.emission,houseEmission:OPTICS_RULES.materials.house.emission},
   view:{dimension:0,display:'line',fieldAngle:120,windowHeight:8,projection:'perspective',showRange:true,mapLocked:true},
   behavior:{population:0,wandering:false,interaction:'touch'},
@@ -30,6 +31,7 @@ const number=(path,label,min,max,step,format=v=>String(v))=>field(path,label,'ra
 const select=(path,label,options)=>field(path,label,'select',{options});
 const toggle=(path,label)=>field(path,label,'checkbox');
 const hint=(def,description)=>({...def,description});
+const distance=(path,label,description)=>hint({...number(path,label,1,13,'any',formatLength),editable:true,unit:LENGTH_UNIT,numeric:{min:2,max:8192,step:1},toControl:Math.log2,fromControl:v=>Math.round(2**v)},description);
 const worldView=[
   number('view.dimension','观察维度',0,100,1,v=>`${Math.round(90*(1-v/100))}°`),
   select('view.projection','一维镜头',[['perspective','画面未矫正','平面透视：静止物体、匀速转头时，越靠近画面边缘移动越快。左右平移仍受距离影响。'],['equidistant','画面矫正','曲面等角：静止物体、匀速转头时，相同角度对应相同画面距离。左右平移仍受距离影响。']]),
@@ -51,10 +53,12 @@ function renderField(def){
   return `<div class="control"><div class="control-heading"><label for="${id}" ${described}>${def.label}</label>${numeric}</div><input id="${id}" data-path="${def.path}" type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${controlValue}" ${def.toControl?`aria-valuetext="${def.format(value)}"`:''} ${described}></div>`;
 }
 function lightSummary(){
-  const plot=$('attenuation-plot');if(!plot)return;
-  const rules=sharedSettings(),scale=state.shared.attenuationDistance,scattering=state.shared.visionEffect==='scatter';
-  const response=d=>{if(!scattering)return distanceAttenuation(d,rules);const t=Math.max(0,Math.min(1,(d/scale-.1)/.9));return state.shared.attenuationEnabled?state.shared.scatterAmount/100*t*t*(3-2*t):0;};
-  plot.innerHTML=`<svg viewBox="0 0 300 85" role="img" aria-label="${scattering?'散射宽度':'亮度'}曲线：横轴距离（身长），纵轴保留程度"><path class="plot-grid" d="M38 10H282 M38 62H282"/><polyline points="${Array.from({length:61},(_,i)=>`${38+244*i/60},${10+52*(1-response(scale*i/60))}`).join(' ')}"/><text x="0" y="14">100%</text><text x="6" y="66">0%</text>${[0,1,2].map(i=>`<text x="${38+244*i/2}" y="82" text-anchor="middle">${Number((scale*i/2).toFixed(1))}</text>`).join('')}</svg>`;
+  const rules=sharedSettings();
+  for(const [id,scattering,scale] of [['attenuation-plot',false,state.shared.attenuationDistance],['scatter-plot',true,state.shared.scatterDistance]]){
+    const plot=$(id);if(!plot)continue;
+    const response=d=>scattering?(state.shared.scatterEnabled?scatterProgress(d,scale,state.shared.scatterCurve):0):distanceAttenuation(d,rules);
+    plot.innerHTML=`<svg viewBox="0 0 300 85" role="img" aria-label="${scattering?'散射宽度':'亮度'}曲线：横轴距离（身长），纵轴${scattering?'平均宽度':'保留亮度'}"><path class="plot-grid" d="M38 10H282 M38 62H282"/><polyline points="${Array.from({length:61},(_,i)=>`${38+244*i/60},${10+52*(1-response(scale*i/60))}`).join(' ')}"/><text x="0" y="14">100%</text><text x="6" y="66">0%</text>${[0,1,2].map(i=>`<text x="${38+244*i/2}" y="82" text-anchor="middle">${Number((scale*i/2).toFixed(1))}</text>`).join('')}</svg>`;
+  }
 }
 function emissionControl(material){
   const level=v=>Math.max(-GAIN_LIMIT,Math.min(GAIN_LIMIT,Math.round(Math.log2(v))));
@@ -69,13 +73,17 @@ function paintControls(){
     `<p class="paint-rule">${directional?'固定随身体转动的配色；与几何明暗增强独立。':'角色按个体固定选色；建筑独立，切换方案不变。点击色块自定义。'}</p>`;
 }
 function lightControls(){
-  return '<div class="control-grid">'+renderField(toggle('shared.attenuationEnabled','视野遮罩'))+
+  return '<div class="control-grid">'+renderField(toggle('shared.attenuationEnabled','启用衰减'))+
     renderField(toggle('view.showRange','范围虚线'))+'</div>'+
-    renderField(hint({...number('shared.attenuationDistance','视野范围',1,13,'any',formatLength),editable:true,unit:LENGTH_UNIT,numeric:{min:2,max:8192,step:1},toControl:Math.log2,fromControl:v=>Math.round(2**v)},'从观察者到最大可见边界的距离；三种效果共用这个范围。按倍数调节：2、4、8…8,192 身长。'))+
-    renderField(select('shared.visionEffect','效果',[['attenuation','光线衰减','越远越暗，清晰度不变。'],['scatter','散射模糊','范围内保留亮度；中心清晰，越远越模糊。'],['both','衰减＋散射','越远越暗，也越模糊。']]))+
-    renderField(hint(number('shared.scatterAmount','散射程度',0,100,1,v=>`${v}%`),'控制远处平均的宽度；中心 10% 范围保持清晰。0 关闭散射。'))+
+    renderField(distance('shared.attenuationDistance','视野范围','光线衰减到 0% 的距离，也是最大可见边界；不改变散射的远近变化。按倍数调节：2、4、8…8,192 身长。'))+
     renderField(select('shared.attenuationCurve','衰减方式',[['inverse-square','平方反比 · 近强远弱'],['smooth','平滑 · 柔和渐暗'],['linear','线性 · 匀速下降'],['exponential','指数 · 先快后慢'],['quadratic','二次 · 先慢后快']]))+
     '<div class="attenuation-plot" id="attenuation-plot"></div>';
+}
+function scatterControls(){
+  return renderField(toggle('shared.scatterEnabled','启用散射'))+
+    renderField(distance('shared.scatterDistance','散射范围','到这个距离达到最大模糊，之后保持；不改变光线衰减的可见边界。'))+
+    renderField(select('shared.scatterCurve','散射方式',[['smooth','平滑 · 柔和过渡'],['linear','线性 · 均匀增加'],['quadratic','二次 · 先慢后快'],['exponential','指数 · 后段加快'],['logarithmic','对数 · 先快后慢']]))+
+    '<div class="attenuation-plot" id="scatter-plot"></div>';
 }
 function renderInspector(){
   activeFields=[];
@@ -91,18 +99,20 @@ function renderInspector(){
     '<div class="control-grid">'+emissionControl('resident')+emissionControl('house')+'</div>'+
     renderField(hint({...number('shared.exposure','曝光',-3,3,1,v=>{const n=Math.round(Math.log2(v/12));return n>0?`+${n}`:String(n);}),toControl:v=>Math.round(Math.log2(v/12)),fromControl:v=>12*2**v},'共同影响所有类别。'));
   const panel=(id,title,body)=>`<section class="config-panel" aria-labelledby="${id}-title"><h2 id="${id}-title">${title}</h2><div class="config-panel-body">${body}</div></section>`;
-  $('inspector-content').innerHTML=panel('palette','发光方式',palette)+panel('light','视野',lightControls())+panel('stage','镜头',stage)+panel('behavior','行为',behavior);
+  $('inspector-content').innerHTML=panel('palette','发光方式',palette)+panel('light','光线衰减',lightControls())+panel('scatter','散射模糊',scatterControls())+panel('stage','镜头',stage)+panel('behavior','行为',behavior);
   lightSummary();syncViewControls();syncDisabled();
 }
 function syncDisabled(){
   controls.querySelectorAll('#inspector-content button,#inspector-content input,#inspector-content select,#scene-controls button,#scene-controls input,#scene-controls select').forEach(el=>{
-    el.disabled=!api||(['shared.attenuationDistance','shared.attenuationCurve','shared.visionEffect','shared.scatterAmount','view.showRange'].includes(el.dataset.path)&&!state.shared.attenuationEnabled)||el.dataset.path==='shared.scatterAmount'&&state.shared.visionEffect==='attenuation'||el.dataset.path==='shared.attenuationCurve'&&state.shared.visionEffect==='scatter';
+    const path=el.dataset.path;
+    el.disabled=!api||(['shared.attenuationDistance','shared.attenuationCurve','view.showRange'].includes(path)&&!state.shared.attenuationEnabled)||(['shared.scatterDistance','shared.scatterCurve'].includes(path)&&!state.shared.scatterEnabled);
   });
   if($('expand-shapes'))$('expand-shapes').disabled=!api||api.snapshot().cameraProgress!==1;
+  for(const id of ['zoom-out','zoom-fit','zoom-in'])$(id).disabled=!api||api.snapshot().cameraProgress!==0||(id==='zoom-out'&&api.snapshot().overviewZoom<=.25)||(id==='zoom-in'&&api.snapshot().overviewZoom>=16);
 }
 function sharedSettings(){return {
-  // One distance effect in the studio, including when loading older presets.
-  exposure:state.shared.exposure,detailGain:state.shared.detailGain===0?0:2**state.shared.detailGain,detailStyle:state.shared.detailStyle,visionEffect:state.shared.visionEffect,scatterAmount:state.shared.scatterAmount/100,fog:0,residentEmission:state.shared.residentEmission,houseEmission:state.shared.houseEmission,
+  // Visibility and scatter distances stay independent across every scene.
+  exposure:state.shared.exposure,detailGain:state.shared.detailGain===0?0:2**state.shared.detailGain,detailStyle:state.shared.detailStyle,visionEffect:state.shared.scatterEnabled?(state.shared.attenuationEnabled?'both':'scatter'):'attenuation',scatterDistance:state.shared.scatterDistance,scatterCurve:state.shared.scatterCurve,fog:0,residentEmission:state.shared.residentEmission,houseEmission:state.shared.houseEmission,
   attenuationDistance:state.shared.attenuationEnabled?state.shared.attenuationDistance:0,
   attenuationMode:'mask',attenuationFloor:0,attenuationCurve:state.shared.attenuationCurve,paintStyle:state.shared.paintStyle,customPaint:state.shared.customPaint,paintMode:state.shared.paintMode,wallColor:state.shared.wallColor,
 };}
@@ -176,7 +186,11 @@ window.addEventListener('message',event=>{
 function updateStatus(){
   if(!api)return;
   const snapshot=api.snapshot();
-  $('scene-controls').innerHTML=`<span class="scene-facts">${snapshot.population.toLocaleString()} 位 · ${snapshot.extent}</span>`;
+  $('zoom-value').textContent=`${Math.round(snapshot.overviewZoom*100)}%`;
+  $('zoom-out').disabled=snapshot.cameraProgress!==0||snapshot.overviewZoom<=.25;
+  $('zoom-in').disabled=snapshot.cameraProgress!==0||snapshot.overviewZoom>=16;
+  const canvasSize=[snapshot.canvasExtent.width,snapshot.canvasExtent.height].map(value=>value.toLocaleString('zh-CN',{maximumFractionDigits:1})).join(' × ');
+  $('scene-controls').innerHTML=`<span class="scene-facts" aria-description="俯视时整个可见画布的宽乘高；1 身长等于标准成年个体的直径">${snapshot.population.toLocaleString()} 位 · 俯视画布 ${canvasSize} 身长</span>`;
   {
     const dimension=Math.round(snapshot.perspective*100);
     state.view.dimension=dimension;if(snapshot.cameraProgress===1)state.view.display=snapshot.lineOnly?'line':'expanded';syncViewControls();syncDisabled();
@@ -222,6 +236,8 @@ controls.addEventListener('click',event=>{
   if(button.id==='expand-shapes'){api.click('sight-expanded');updateStatus();queueSave();}
   if(button.dataset.action==='impact')api.click('impact');
 });
+for(const [id,factor] of [['zoom-out',1/Math.SQRT2],['zoom-in',Math.SQRT2]])$(id).onclick=()=>{api.configure({overviewZoom:api.snapshot().overviewZoom*factor});updateStatus();};
+$('zoom-fit').onclick=()=>{api.configure({fitOverview:true});updateStatus();};
 $('reset-scene').onclick=() => {loadScene(state.currentScene);};
 $('retry').onclick=()=>loadScene(state.currentScene);
 function saveConfig(){
@@ -236,8 +252,15 @@ function readPreset(saved){
   if(saved?.state?.currentScene==='optics')saved.state.currentScene='stars';
   if(saved?.version!==1||!saved.state||!Object.hasOwn(scenes,saved.state.currentScene))throw new Error('Invalid preset');
   const result=structuredClone(defaults),source=saved.state;
-  const enums={visionEffect:['attenuation','scatter','both'],detailStyle:['soft','velvet','sharp'],paintStyle:Object.keys(PAINT_STYLES),paintMode:['solid','mixed'],attenuationCurve:['smooth','linear','exponential','quadratic','inverse-square'],display:['expanded','line'],projection:['equidistant','perspective']};
-  const limits={exposure:[1.5,96],detailGain:[0,3],scatterAmount:[0,100],residentEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],houseEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],attenuationDistance:[2,8192],dimension:[0,100],fieldAngle:[60,160],windowHeight:[1,100]};
+  // Older presets chose a combined mode under one master switch.
+  if(source.shared&&source.shared.scatterEnabled==null){
+    const enabled=source.shared.attenuationEnabled??true;
+    source.shared.scatterEnabled=enabled&&['scatter','both'].includes(source.shared.visionEffect);
+    source.shared.attenuationEnabled=enabled&&source.shared.visionEffect!=='scatter';
+  }
+  if(source.shared?.scatterAmount===0)source.shared.scatterEnabled=false;
+  const enums={scatterCurve:['smooth','linear','quadratic','exponential','logarithmic'],detailStyle:['soft','velvet','sharp'],paintStyle:Object.keys(PAINT_STYLES),paintMode:['solid','mixed'],attenuationCurve:['smooth','linear','exponential','quadratic','inverse-square'],display:['expanded','line'],projection:['equidistant','perspective']};
+  const limits={exposure:[1.5,96],detailGain:[0,3],scatterDistance:[2,8192],residentEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],houseEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],attenuationDistance:[2,8192],dimension:[0,100],fieldAngle:[60,160],windowHeight:[1,100]};
   // Older presets kept behavior per scene. Adopt the current scene's values once.
   source.behavior??={...defaults.behavior,...source[source.currentScene]};
   if(!source.shared.wallColor&&source.shared.paintStyle==='custom')source.shared.wallColor=source.shared.customPaint?.wall;
@@ -246,7 +269,9 @@ function readPreset(saved){
       let value=source[group]?.[key]??defaultValue;
       if(key==='customPaint'){setCustomPaintStyle(value);value={colors:[...PAINT_STYLES.custom.colors],...(PAINT_STYLES.custom.pattern?{pattern:PAINT_STYLES.custom.pattern}:{})};}
       if(key==='wallColor'&&!/^#[0-9a-f]{6}$/i.test(value))throw new Error('Invalid wall colour');
-      if(key==='attenuationDistance'&&value===1)value=2;
+      // Preserve the old appearance once, then save the two distances separately.
+      if(key==='scatterDistance'&&source.shared.scatterDistance==null)value=source.shared.attenuationDistance??defaultValue;
+      if(['attenuationDistance','scatterDistance'].includes(key)&&value===1)value=2;
       if(key==='detailGain'&&Number.isInteger(value)&&value>=-3&&value<0)value=0;
       if(['residentEmission','houseEmission','exposure'].includes(key)&&typeof value==='number'&&Number.isFinite(value)&&value>=0){
         const base=key==='exposure'?12:1,limit=key==='exposure'?3:GAIN_LIMIT;

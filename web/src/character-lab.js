@@ -1,6 +1,7 @@
 import {Character, characterTypes, RAPIER} from './characters.js';
 import {MIN_SIZE,MAX_SIZE,formatLength} from './measure.js';
 import './character-lab.css';
+import './workspace-chrome.css';
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE} from './paint.js';
 import {connectStudio} from './studio-bridge.js';
 

@@ -5,13 +5,21 @@ import * as THREE from 'three';
 export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeight}){
   const targets=new Map(),quadScene=new THREE.Scene(),quadCamera=new THREE.Camera();
   const uniforms={image:{value:null},depth:{value:null},step:{value:new THREE.Vector2()},
-    eye,flatWindow,range:{value:1},radius:{value:1},far:{value:1},
+    eye,flatWindow,range:{value:1},scatterDistance:{value:1},curve:{value:0},radius:{value:1},far:{value:1},
     origin:{value:new THREE.Vector3()},right:{value:new THREE.Vector3()},up:{value:new THREE.Vector3()},forward:{value:new THREE.Vector3()}};
   const material=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms,
     vertexShader:`varying vec2 vUv;void main(){vUv=position.xy*.5+.5;gl_Position=vec4(position.xy,0.,1.);}`,
     fragmentShader:`varying vec2 vUv;uniform sampler2D image;uniform sampler2D depth;
-      uniform vec2 step;uniform vec2 eye;uniform vec2 flatWindow;uniform float range;uniform float radius;uniform float far;
+      uniform vec2 step;uniform vec2 eye;uniform vec2 flatWindow;uniform float range;uniform float scatterDistance;uniform int curve;uniform float radius;uniform float far;
       uniform vec3 origin;uniform vec3 right;uniform vec3 up;uniform vec3 forward;
+      float spread(float d){
+        float x=clamp(d/scatterDistance,0.,1.);
+        if(curve==1)return x;
+        if(curve==2)return x*x;
+        if(curve==3)return (exp(4.*x)-1.)/(exp(4.)-1.);
+        if(curve==4)return log(1.+15.*x)/log(16.);
+        return x*x*(3.-2.*x);
+      }
       float distanceAt(vec2 p){
         if(flatWindow.x>0.)return texture2D(depth,p).r*far;
         // All world boundaries lie on the same plane. Intersect its ray,
@@ -23,8 +31,8 @@ export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeigh
       void main(){
         if(flatWindow.x==1.&&abs(vUv.y*2.-1.)>flatWindow.y){gl_FragColor=vec4(0.,0.,0.,1.);return;}
         float d=distanceAt(vUv),hit=texture2D(depth,vUv).r;
-        if(d>=range&&(flatWindow.x==0.||hit<1.)){gl_FragColor=vec4(0.,0.,0.,1.);return;}
-        float blur=radius*smoothstep(.1,1.,d/range);
+        if(range>0.&&d>=range&&(flatWindow.x==0.||hit<1.)){gl_FragColor=vec4(0.,0.,0.,1.);return;}
+        float blur=radius*spread(d);
         if(blur<.1){gl_FragColor=vec4(texture2D(image,vUv).rgb,1.);return;}
         vec3 sum=vec3(0.);float weights=0.;
         for(int i=-12;i<=12;i++){
@@ -33,7 +41,7 @@ export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeigh
           float w=exp(-4.5*x*x);
           // Distant light cannot wash across a nearer opaque boundary.
           if(hit<1.&&otherHit<1.&&other>d+max(.05,d*.02))w=0.;
-          float sourceRadius=radius*smoothstep(.1,1.,other/range);
+          float sourceRadius=radius*spread(other);
           if(otherHit<1.&&abs(x*blur)>max(.5,sourceRadius))w=0.;
           sum+=texture2D(image,p).rgb*w;weights+=w;
         }
@@ -41,7 +49,7 @@ export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeigh
       }`});
   quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),material));
   return {
-    render(scene,camera,{x=0,y=0,width,height},range,amount){
+    render(scene,camera,{x=0,y=0,width,height},range,scatterDistance,curve='smooth'){
       const ratio=renderer.getPixelRatio(),w=Math.floor(width*ratio),h=Math.floor(height*ratio);
       let pair=targets.get(camera);
       if(!pair){
@@ -55,7 +63,9 @@ export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeigh
       renderer.setRenderTarget(pair[0]);renderer.clear();renderer.render(scene,camera);
       camera.layers.mask=layers;viewportOrigin.value.set(x,y);
       uniforms.depth.value=pair[0].depthTexture;uniforms.range.value=range;
-      uniforms.radius.value=12*ratio*amount;uniforms.far.value=camera.far;
+      uniforms.scatterDistance.value=scatterDistance;
+      uniforms.curve.value=['smooth','linear','quadratic','exponential','logarithmic'].indexOf(curve);
+      uniforms.radius.value=12*ratio;uniforms.far.value=camera.far;
       uniforms.origin.value.copy(camera.position);
       const slope=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
       uniforms.right.value.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(slope*camera.aspect);

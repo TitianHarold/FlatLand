@@ -204,11 +204,11 @@ const labelElements=(openScene?[]:labels).map(([name,x,y,cls,sub])=>{
 });
 
 // Photometry stays shared with Study 000; the room always renders its 3D meshes.
-const rules={...OPTICS_RULES,finish:'clear',coloring:true,visionEffect:'attenuation',scatterAmount:.6};
+const rules={...OPTICS_RULES,finish:'clear',coloring:true,visionEffect:'attenuation',scatterDistance:25,scatterCurve:'smooth'};
 const scatter=createScatter(renderer,{eye:overviewEye,flatWindow,viewportOrigin,planeHeight:PLANE_HEIGHT});
 function renderView(view,rect){
-  if(maskRadius.value>0&&rules.visionEffect!=='attenuation'&&rules.scatterAmount>0){
-    scatter.render(scene,view,rect,maskRadius.value,rules.scatterAmount);
+  if(rules.visionEffect!=='attenuation'){
+    scatter.render(scene,view,rect,maskRadius.value,rules.scatterDistance,rules.scatterCurve);
   }else{renderer.clear();renderer.render(scene,view);}
 }
 const DEFAULT_FIELD_ANGLE=120;
@@ -295,6 +295,20 @@ function drawMini(observer) {
 let width=innerWidth,height=innerHeight,targetPerspective=0,perspective=0,toastTime=0;
 const sightPreview=$('sight-preview'),previewWindow=$('sight-preview-window'),savedFlatWindow=new THREE.Vector2();
 let previewBounds=null;
+let canvasWidth=0,canvasHeight=0,overviewZoom=1;
+const overviewBounds=new THREE.Box2();
+function fitOverview(){
+  overviewBounds.makeEmpty();
+  for(const wall of wallBoundaries)for(const vertex of wall.vertices)overviewBounds.expandByPoint(vertex);
+  for(const entity of sim.entities)for(const vertex of worldVertices(entity.vertices,entity.body.translation(),entity.body.rotation()))overviewBounds.expandByPoint(vertex);
+  overviewZoom=1;
+}
+fitOverview();
+container.addEventListener('wheel',event=>{
+  if(perspective!==0||event.ctrlKey)return;
+  event.preventDefault();
+  overviewZoom=THREE.MathUtils.clamp(overviewZoom*Math.exp(-Math.max(-100,Math.min(100,event.deltaY))*.003),.25,16);
+},{passive:false});
 let frames=0,fps=60,statsAt=performance.now(),previousTime=performance.now(),accumulator=0,collisionCooldown=0;
 function resize(){width=container.clientWidth;height=container.clientHeight;viewportSize.value.set(width,height);renderer.setSize(width,height);previewBounds=null;}
 addEventListener('resize',resize);resize();
@@ -473,12 +487,10 @@ function animate(now) {
   const t=perspective,p=observer,residentView=t===1;
   const heading=Math.PI/2-observer.heading,eased=t*t*(3-2*t);
   overviewEye.value.set(p.x,p.y);eyeForward.value.set(Math.sin(observer.heading),Math.cos(observer.heading));
-  const centre=openScene?new THREE.Vector3():new THREE.Vector3(width>760?-1.5:0,-1.45,0);
-  // Frame the overview at the default horizontal FOV. Keep this distance
-  // independent of the live slider, so changing the lens visibly changes zoom.
-  // Fit the mask field to the viewport diagonal so samples reach every corner.
-  const framedWidth=stars?Math.max(6400,6400*width/height):maskTest?sim.bounds.x*1.9/Math.hypot(1,height/width):Math.max((openScene?82:20)*(width/height),parade?116:17);
-  const topDistance=framedWidth/(2*Math.tan(THREE.MathUtils.degToRad(DEFAULT_FIELD_ANGLE)/2));
+  const centre=new THREE.Vector3((overviewBounds.min.x+overviewBounds.max.x)/2,(overviewBounds.min.y+overviewBounds.max.y)/2,0);
+  // Fit the actual scene once; viewport zoom is independent of the resident lens.
+  const framedWidth=Math.max(overviewBounds.max.x-overviewBounds.min.x,(overviewBounds.max.y-overviewBounds.min.y)*width/height)*1.08/overviewZoom;
+  const topDistance=framedWidth/(2*Math.tan(observer.fov/2));
   // The descending camera orbits the observer. The map centre is only for
   // the fully overhead overview; it is not a second moving camera pivot.
   const location=t===0?centre:new THREE.Vector3(p.x,p.y,0);
@@ -487,12 +499,14 @@ function animate(now) {
   camera.up.set(0,Math.sin(elevation),Math.cos(elevation)).normalize();
   camera.lookAt(location.x+Math.cos(heading)*eased,location.y+Math.sin(heading)*eased,PLANE_HEIGHT*eased);
   const verticalSlope=Math.tan(observer.fov/2)/(width/height);
+  // World-space coverage of the full overhead canvas, including empty space.
+  canvasHeight=2*topDistance*verticalSlope;canvasWidth=canvasHeight*width/height;
   camera.aspect=width/height;
   camera.fov=THREE.MathUtils.radToDeg(2*Math.atan(verticalSlope));
   camera.updateProjectionMatrix();
   const scaleBar=$('scale-bar');scaleBar.hidden=t!==0;
   if(t===0){
-    const pixelsPerLength=height/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*camera.position.z);
+    const pixelsPerLength=height/canvasHeight;
     const magnitude=10**Math.floor(Math.log10(90/pixelsPerLength));
     const size=([5,2,1].find(n=>n*magnitude*pixelsPerLength<=110)??1)*magnitude;
     scaleBar.style.width=`${size*pixelsPerLength}px`;scaleBar.textContent=formatLength(size);
@@ -550,19 +564,21 @@ function animate(now) {
 $('loading').remove();container.focus({preventScroll:true});requestAnimationFrame(animate);
 connectStudio('world',{
   configure(values){
-    if(Object.hasOwn(values,'population'))sim.population(values.population);
+    if(Object.hasOwn(values,'population')){sim.population(values.population);fitOverview();}
+    if(values.fitOverview)fitOverview();
+    if(Number.isFinite(values.overviewZoom))overviewZoom=THREE.MathUtils.clamp(values.overviewZoom,.25,16);
     if(Object.hasOwn(values,'display')){
       expandOnArrival=values.display==='expanded';
       if(perspective===1&&lineOnly===expandOnArrival)setStretch(expandOnArrival);
     }
-    for(const name of ['exposure','fog','detailGain','detailStyle','visionEffect','scatterAmount','attenuationDistance','attenuationMode','attenuationCurve','attenuationFloor'])if(Object.hasOwn(values,name))rules[name]=values[name];
+    for(const name of ['exposure','fog','detailGain','detailStyle','visionEffect','scatterDistance','scatterCurve','attenuationDistance','attenuationMode','attenuationCurve','attenuationFloor'])if(Object.hasOwn(values,name))rules[name]=values[name];
     maskRadius.value=rules.attenuationMode==='mask'?rules.attenuationDistance:0;
-    if(!maskRadius.value||rules.visionEffect==='attenuation'||rules.scatterAmount===0)scatter.clear();
+    if(rules.visionEffect==='attenuation')scatter.clear();
     for(const [material,key] of [['resident','residentEmission'],['house','houseEmission']])if(Object.hasOwn(values,key))rules.materials={...rules.materials,[material]:{...rules.materials[material],emission:values[key]}};
   },
-  snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},layout,projection,extent:maskTest?'半径 200 身长 · 直径 400 身长':stars?'半径 3,000 身长 · 直径 6,000 身长':parade?'116 × 76 身长':'约 14 × 15 身长',perspective:targetPerspective,cameraProgress:perspective,
+  snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},layout,projection,canvasExtent:{width:canvasWidth,height:canvasHeight},overviewZoom,perspective:targetPerspective,cameraProgress:perspective,
     rangeGuide:{visible:rangeCircle.visible,radius:rangeCircle.scale.x,x:rangeCircle.position.x,y:rangeCircle.position.y,rayLength:Math.hypot(sightGuides[0].line.geometry.attributes.position.getX(1),sightGuides[0].line.geometry.attributes.position.getY(1))},
     mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.length,wandering:sim.wandering,
-    optics:{displayEnhancement:rules.contour>0&&rules.detailGain>0,detailGain:rules.detailGain,detailStyle:rules.detailStyle??'sharp',visionEffect:rules.visionEffect,scatterAmount:rules.scatterAmount,exposure:rules.exposure,fog:rules.fog,attenuationMode:rules.attenuationMode,attenuationCurve:rules.attenuationCurve,attenuationDistance:rules.attenuationDistance,attenuationFloor:rules.attenuationFloor,residentEmission:rules.materials.resident.emission,houseEmission:rules.materials.house.emission},
+    optics:{displayEnhancement:rules.contour>0&&rules.detailGain>0,detailGain:rules.detailGain,detailStyle:rules.detailStyle??'sharp',visionEffect:rules.visionEffect,scatterDistance:rules.scatterDistance,scatterCurve:rules.scatterCurve,exposure:rules.exposure,fog:rules.fog,attenuationMode:rules.attenuationMode,attenuationCurve:rules.attenuationCurve,attenuationDistance:rules.attenuationDistance,attenuationFloor:rules.attenuationFloor,residentEmission:rules.materials.resident.emission,houseEmission:rules.materials.house.emission},
     paint:PAINT_STYLES[rules.paintStyle],interaction:sim.player.interaction,playerState:sim.player.state}),
 });

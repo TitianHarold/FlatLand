@@ -36,10 +36,10 @@
     </aside>
     <main class="workspace">
       <div class="preview-shell">
-        <div class="viewport-wrap"><div class="scene-controls" id="scene-controls" role="group" aria-label="场景配置"></div><button id="reset-scene" class="viewport-reset" title="重建当前场景，保留参数">重置场景</button><iframe id="preview" title="当前实验场景" allow="fullscreen"></iframe><div id="loading" role="status"><span class="loading-mark">◇</span><strong>正在准备场景</strong><p>载入几何、角色与光线</p><button id="retry" hidden>重新加载</button></div></div>
+        <div class="viewport-wrap"><div class="scene-controls" id="scene-controls" role="group" aria-label="场景配置"></div><button id="reset-scene" class="viewport-reset" title="重建当前场景，保留参数">重置场景</button><div class="canvas-zoom" role="group" aria-label="俯视画布缩放"><button id="zoom-out" aria-label="缩小画布" title="缩小画布">−</button><button id="zoom-fit" title="完整显示当前场景">缩放至合适</button><button id="zoom-in" aria-label="放大画布" title="放大画布">+</button><output id="zoom-value" aria-label="画布缩放比例">100%</output></div><iframe id="preview" title="当前实验场景" allow="fullscreen"></iframe><div id="loading" role="status"><span class="loading-mark">◇</span><strong>正在准备场景</strong><p>载入几何、角色与光线</p><button id="retry" hidden>重新加载</button></div></div>
       </div>
     </main>
-    <section class="inspector" aria-label="发光方式、视野、镜头与行为配置"><div id="inspector-content"></div></section>
+    <section class="inspector" aria-label="发光方式、光线衰减、散射模糊、镜头与行为配置"><div id="inspector-content"></div></section>
   </div>
   <dialog id="about-dialog"><div class="dialog-title"><span class="eyebrow">ONE WORKSPACE / FOUR THREADS</span><button id="close-about" aria-label="关闭说明">×</button></div><h2>一个场景，四个观察方向。</h2><p>单击画面转向、双击空白移动观察者、拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>色彩革命视觉风格</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">配置自动保存在当前浏览器，刷新或重新打开时恢复。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
   <script type="module" src="./src/studio.js"></script>
