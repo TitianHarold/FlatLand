@@ -55,15 +55,17 @@ export function makeColorField({angle=0,distance=6,details=true,paintStyle=DEFAU
   return bodies;
 }
 
-export function makeCrowd(count=240) {
+export function makeCrowd(count=240,{nearby=false}={}) {
   let seed=1904;
   const random=()=>((seed=(1664525*seed+1013904223)>>>0)/4294967296);
   const crowd=[];
   while(crowd.length<count) {
     const i=crowd.length, band=i/count;
-    const angle=band<.52?(-26+(random()+random()-1)*42)*Math.PI/180:
+    const angle=nearby&&band<.42?random()*Math.PI*2:band<.52?(-26+(random()+random()-1)*42)*Math.PI/180:
       band<.8?(94+(random()+random()-1)*32)*Math.PI/180:random()*Math.PI*2;
-    const distance=1200+random()*1800;
+    // The studio includes sparse neighbours; the optical comparison keeps distant-only fixtures.
+    const [start,span]=nearby&&band<.08?[4,20]:nearby&&band<.24?[24,104]:nearby&&band<.42?[128,1072]:[1200,1800];
+    const distance=start+random()*span;
     const x=Math.sin(angle)*distance,y=Math.cos(angle)*distance;
     if(crowd.some(p=>Math.hypot(p.x-x,p.y-y)<2.1))continue;
     crowd.push({x,y,sides:3+i%7,angle:random()*Math.PI*2});

@@ -23,14 +23,14 @@
       </button>
       <button class="scene-card" data-scene="stars" aria-pressed="false">
         <div class="scene-thumb stars-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><defs><pattern id="star-dots" width="19" height="17" patternUnits="userSpaceOnUse"><circle cx="5" cy="3" r=".7" fill="#bfa46e"/><circle cx="14" cy="11" r="1" fill="#94a9a1"/><circle cx="2" cy="14" r=".5" fill="#95a5b6"/></pattern></defs><ellipse cx="82" cy="35" rx="67" ry="24" fill="url(#star-dots)" stroke="none"/><path d="m34 52 48-30 48 30" stroke-dasharray="2 3"/><circle cx="82" cy="22" r="2" fill="#829972"/></svg><span>03</span></div>
-        <div class="scene-card-caption"><strong>星野</strong><span>远处居民 · 接收方式</span></div>
+        <div class="scene-card-caption"><strong>星野</strong><span>远近居民 · 疏密对照</span></div>
       </button>
       <button class="scene-card" data-scene="mask" aria-pressed="false">
         <div class="scene-thumb mask-thumb"><svg viewBox="0 0 160 72" aria-hidden="true"><g stroke-dasharray="1 3"><circle cx="80" cy="37" r="8"/><circle cx="80" cy="37" r="15"/><circle cx="80" cy="37" r="22"/><circle cx="80" cy="37" r="29"/></g><path d="m55 22 25 15 25-15" stroke="#819671"/><circle cx="80" cy="37" r="2" fill="#829972"/><path d="m78 13 4 0-2 3Zm20 24 4 0-2 3Zm-30 16 4 0-2 3Z" stroke="#c4a475"/></svg><span>04</span></div>
         <div class="scene-card-caption"><strong>同心圆遮罩</strong><span>密集标本 · 远近对照</span></div>
       </button>
       <div class="library-heading experiments-heading"><span>基础实验</span><span class="tiny">STUDIES</span></div>
-      <a class="study-item" href="./character-lab.html"><span class="study-icon">△</span><span>角色与碰撞<small>形状、尺寸与接触</small></span><span class="arrow">↗</span></a>
+      <button class="study-item" data-scene="characters" aria-pressed="false"><span class="study-icon">△</span><span>角色与碰撞<small>形状、尺寸与接触</small></span></button>
 
       <button id="about" class="text-button library-about">实验说明 · 度量衡</button>
     </aside>
@@ -41,7 +41,7 @@
     </main>
     <section class="inspector" aria-label="发光方式、光线衰减、散射模糊、镜头与行为配置"><div id="inspector-content"></div></section>
   </div>
-  <dialog id="about-dialog"><div class="dialog-title"><span class="eyebrow">ONE WORKSPACE / FOUR THREADS</span><button id="close-about" aria-label="关闭说明">×</button></div><h2>一个场景，四个观察方向。</h2><p>单击画面转向、双击空白移动观察者、拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>色彩革命视觉风格</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">配置自动保存在当前浏览器，刷新或重新打开时恢复。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
+  <dialog id="about-dialog"><div class="dialog-title"><span class="eyebrow">ONE WORKSPACE / FOUR THREADS</span><button id="close-about" aria-label="关闭说明">×</button></div><h2>一个场景，四个观察方向。</h2><p>俯视单击空白让观察者走过去，双击空白瞬移。居民视角单击或拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>色彩革命视觉风格</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">配置自动保存在当前浏览器，刷新或重新打开时恢复。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
   <script type="module" src="./src/studio.js"></script>
 </body>
 </html>

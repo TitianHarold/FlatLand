@@ -45,7 +45,13 @@ maskScene.dispose();
 {
 const stars=await createSimulation({layout:'stars'});
 assert.equal(stars.entities.length,241);assert.equal(stars.walls.length,0);
-assert(stars.entities.filter(e=>e!==stars.player).every(e=>e instanceof Character&&e.size===1&&Math.hypot(e.body.translation().x,e.body.translation().y)>=1200),'Star fixtures use real shared bodies with standard body-length size');
+const starResidents=stars.entities.filter(e=>e!==stars.player),distances=starResidents.map(e=>Math.hypot(e.body.translation().x,e.body.translation().y));
+assert(starResidents.every(e=>e instanceof Character&&e.size===1),'Star fixtures use real shared bodies with standard body-length size');
+for(const [min,max] of [[4,24],[24,128],[128,1200],[1200,3000]])assert(distances.some(d=>d>=min&&d<max),'Stars include near, middle and distant neighbours');
+for(let i=0;i<starResidents.length;i++)for(let j=0;j<i;j++){
+  const a=starResidents[i].body.translation(),b=starResidents[j].body.translation();
+  assert(Math.hypot(a.x-b.x,a.y-b.y)>2,'Star fixtures remain separated');
+}
 for(const layout of ['stars','mask']){
   const world=layout==='stars'?stars:await createSimulation({layout});
   world.population(100);assert.equal(world.entities.length,100,'Common population applies to every open field');
@@ -70,7 +76,7 @@ assert.equal(wife.collider.shape.type,RAPIER.ShapeType.Segment);
 const aimOrigin={...sim.player.body.translation()};
 sim.aimAt({x:aimOrigin.x+3,y:aimOrigin.y});
 for(let i=0;i<90;i++)sim.step();
-assert(Math.abs(sim.player.body.rotation())<.002,'A single-click target must become the sight centre');
+assert(Math.abs(sim.player.body.rotation())<.002,'A resident-view aim target must become the sight centre');
 assert.deepEqual({...sim.player.body.translation()},aimOrigin,'Aiming must not relocate the observer');
 sim.aimAt({x:aimOrigin.x-3,y:aimOrigin.y});sim.aimAt(null);
 const cancelledHeading=sim.player.body.rotation();
@@ -78,8 +84,31 @@ for(let i=0;i<30;i++)sim.step();
 assert.equal(sim.player.body.rotation(),cancelledHeading,'Cancelling a pending click must stop its aim command');
 assert.equal(sim.relocate(point(328,60)),false,'A click on a wall must be rejected');
 assert(sim.relocate({x:sim.bounds.x+2,y:0}),'Black space outside the initial room area has no invisible wall');
-// Walk into the long, horizontal bottom wall from the unobstructed cellar.
+const walkStart={...sim.player.body.translation()},destination={x:walkStart.x+1,y:walkStart.y+.5};
+assert(sim.walkTo(destination));sim.step();
+assert(Math.hypot(sim.player.body.translation().x-walkStart.x,sim.player.body.translation().y-walkStart.y)<.02,'Click walking never teleports');
+for(let i=0;i<240;i++)sim.step();
+assert(Math.hypot(sim.player.body.translation().x-destination.x,sim.player.body.translation().y-destination.y)<.025,'Click walking reaches a free destination');
+assert.equal(sim.walkTarget,null,'Arrival clears the walking command');
+const arrived={...sim.player.body.translation()};for(let i=0;i<30;i++)sim.step();
+assert.deepEqual({...sim.player.body.translation()},arrived,'Arrival stops motion');
+sim.walkTo({x:20,y:0});sim.step({...idle,turn:1});assert.equal(sim.walkTarget,null,'Manual input cancels walking');
+sim.walkTo({x:20,y:0});sim.aimAt({x:20,y:2});assert.equal(sim.walkTarget,null,'Resident aiming cancels walking');
+assert.equal(sim.walkTo({x:NaN,y:0}),false,'Invalid destinations cannot reach physics');
+
+// The direct segment crosses the bottom wall; click walking must use a doorway.
+assert.equal(sim.pathfinding,false,'Automatic routing defaults off');
+sim.setPathfinding(true);
 assert(sim.relocate(point(430,455)));
+const outside=point(430,550);assert(sim.walkTo(outside));let crossedDoorway=false;
+for(let i=0;i<2400&&sim.walkTarget;i++){
+  sim.step();if(sim.player.body.translation().x<.1)crossedDoorway=true;
+  for(const wall of sim.walls){const contact=sim.player.collider.contactCollider(wall.collider,0);assert(!contact||contact.distance>-.002,'Path following cannot cut through a wall');}
+}
+assert(crossedDoorway&&sim.walkTarget===null&&Math.hypot(sim.player.body.translation().x-outside.x,sim.player.body.translation().y-outside.y)<.025,'Click walking goes around the wall through a doorway and reaches the destination');
+assert.equal(sim.walkTo(point(430,487)),false,'A destination occupied by the bottom wall is rejected');
+assert(sim.relocate(point(430,455)));
+
 sim.player.body.setRotation(-Math.PI/2,true);
 for(let i=0;i<180;i++)sim.step({...idle,forward:1});
 assert(sim.player.body.translation().y>-6.0,'Walking must stop at the bottom wall');
@@ -90,15 +119,12 @@ sim.player.body.setRotation(Math.PI,true);
 for(let i=0;i<180;i++)sim.step({...idle,forward:1});
 assert(sim.player.body.translation().x<point(135,393).x,'The door must remain traversable');
 assert(sim.relocate(point(319,302)));
-assert(sim.startImpact(),'The impact pair must fit in the lounge');
-const target=sim.demo.target;
-for(let i=0;i<130;i++)sim.step();
-assert.equal(target.state,'dead','A scripted corner strike must use Character death');
-assert.equal(target.deathCause,'killed');
+const target=sim.entities.find(e=>e.role==='resident');
+target.die('killed');for(let i=0;i<10;i++)sim.step();
 assert.equal(target.body.isEnabled(),false,'A dead character leaves physics');
-assert(sim.entities.includes(target),'Keep the last pose for the overview state outline');
-for(let i=0;i<130;i++)sim.step();
-assert(!sim.entities.includes(target),'The studio can remove completed scene fixtures');
+assert(sim.entities.includes(target),'Keep the last pose until the renderer finishes any death animation');
+sim.remove(target);
+assert(!sim.entities.includes(target),'The studio can remove dead scene fixtures');
 assert.equal(sim.population(300),300);
 assert.deepEqual(new Set(sim.entities.map(e=>e.typeId)),new Set(characterTypes.map(t=>t.id)),'Crowds must use all and only the six validated character types');
 const crowdPositions=sim.entities.filter(e=>e.role==='crowd').map(e=>({...e.body.translation()}));
@@ -121,7 +147,7 @@ const pos=sim.player.body.translation();
 const hit=sim.world.castRay(new RAPIER.Ray(pos,{x:0,y:1}),40,true,undefined,undefined,sim.player.collider);
 assert(hit&&hit.timeOfImpact>0,'Resident sight must ignore its own body');
 assert.equal(sim.population(14),14,'Population switching must remove extra colliders');
-console.log(JSON.stringify({checks:'shared Character geometry and sizes, female segment, wall blocking, doorway, Character corner death, paused 300 residents, sight ray, population cleanup',physicsSteps:300,physicsMsPerStep:Number((elapsed/300).toFixed(3)),maxPenetrationMetres:Number(worst.toFixed(5))},null,2));
+console.log(JSON.stringify({checks:'shared Character geometry and sizes, female segment, wall blocking, doorway, Character lifecycle, paused 300 residents, sight ray, population cleanup',physicsSteps:300,physicsMsPerStep:Number((elapsed/300).toFixed(3)),maxPenetrationMetres:Number(worst.toFixed(5))},null,2));
 sim.dispose();
 
 // Free movement is a studio script, using the same bodies and touch interactions.

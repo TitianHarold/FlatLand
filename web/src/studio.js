@@ -10,14 +10,15 @@ const scenes={
   parade:{title:'色彩检阅场',url:'./world.html?studio=1&scene=parade',kind:'world'},
   stars:{title:'星野',url:'./world.html?studio=1&scene=stars',kind:'world'},
   mask:{title:'同心圆遮罩',url:'./world.html?studio=1&scene=mask',kind:'world'},
+  characters:{title:'角色与碰撞',url:'./character-lab.html?studio=1',kind:'characters'},
 };
 const defaults={
   currentScene:'house',
   shared:{paintStyle:DEFAULT_PAINT_STYLE,customPaint:{colors:[...PAINT_STYLES.custom.colors]},paintMode:'solid',wallColor:DEFAULT_WALL_COLOR,coloring:true,
-    exposure:OPTICS_RULES.exposure,detailGain:1,detailStyle:'soft',scatterEnabled:false,scatterDistance:25,scatterCurve:'smooth',attenuationEnabled:true,attenuationDistance:25,attenuationCurve:OPTICS_RULES.attenuationCurve,
-    residentEmission:OPTICS_RULES.materials.resident.emission,houseEmission:OPTICS_RULES.materials.house.emission},
-  view:{dimension:0,display:'line',fieldAngle:120,windowHeight:8,projection:'perspective',showRange:true,mapLocked:true},
-  behavior:{population:0,wandering:false,interaction:'touch'},
+    exposure:OPTICS_RULES.exposure,detailGain:1,detailStyle:'velvet',scatterEnabled:true,scatterDistance:128,scatterCurve:'quadratic',attenuationEnabled:true,attenuationDistance:2048,attenuationCurve:'quadratic',
+    residentEmission:OPTICS_RULES.materials.resident.emission,houseEmission:2**-7},
+  view:{dimension:0,display:'line',fieldAngle:120,windowHeight:1,projection:'perspective',showRange:true,mapLocked:true},
+  behavior:{population:0,wandering:false,interaction:'touch',pathfinding:false,residentKilling:false,deathAnimation:false},
 };
 let state=structuredClone(defaults),api=null,loadTimer,saveTimer;
 const storageKey='flatland-studio-preset-v1';
@@ -56,8 +57,8 @@ function lightSummary(){
   const rules=sharedSettings();
   for(const [id,scattering,scale] of [['attenuation-plot',false,state.shared.attenuationDistance],['scatter-plot',true,state.shared.scatterDistance]]){
     const plot=$(id);if(!plot)continue;
-    const response=d=>scattering?(state.shared.scatterEnabled?scatterProgress(d,scale,state.shared.scatterCurve):0):distanceAttenuation(d,rules);
-    plot.innerHTML=`<svg viewBox="0 0 300 85" role="img" aria-label="${scattering?'散射宽度':'亮度'}曲线：横轴距离（身长），纵轴${scattering?'平均宽度':'保留亮度'}"><path class="plot-grid" d="M38 10H282 M38 62H282"/><polyline points="${Array.from({length:61},(_,i)=>`${38+244*i/60},${10+52*(1-response(scale*i/60))}`).join(' ')}"/><text x="0" y="14">100%</text><text x="6" y="66">0%</text>${[0,1,2].map(i=>`<text x="${38+244*i/2}" y="82" text-anchor="middle">${Number((scale*i/2).toFixed(1))}</text>`).join('')}</svg>`;
+    const response=d=>scattering?(state.shared.scatterEnabled?1-scatterProgress(d,scale,state.shared.scatterCurve):1):distanceAttenuation(d,rules);
+    plot.innerHTML=`<svg viewBox="0 0 300 85" role="img" aria-label="${scattering?'清晰度':'亮度'}曲线：横轴距离（身长），纵轴${scattering?'保留清晰度':'保留亮度'}"><path class="plot-grid" d="M38 10H282 M38 62H282"/><polyline points="${Array.from({length:61},(_,i)=>`${38+244*i/60},${10+52*(1-response(scale*i/60))}`).join(' ')}"/><text x="0" y="14">100%</text><text x="6" y="66">0%</text>${[0,1,2].map(i=>`<text x="${38+244*i/2}" y="82" text-anchor="middle">${Number((scale*i/2).toFixed(1))}</text>`).join('')}</svg>`;
   }
 }
 function emissionControl(material){
@@ -73,25 +74,28 @@ function paintControls(){
     `<p class="paint-rule">${directional?'固定随身体转动的配色；与几何明暗增强独立。':'角色按个体固定选色；建筑独立，切换方案不变。点击色块自定义。'}</p>`;
 }
 function lightControls(){
-  return '<div class="control-grid">'+renderField(toggle('shared.attenuationEnabled','启用衰减'))+
+  return '<p class="panel-description">我们能够看到多远的光；到范围边缘亮度降为 0%。</p><div class="control-grid">'+renderField(toggle('shared.attenuationEnabled','启用衰减'))+
     renderField(toggle('view.showRange','范围虚线'))+'</div>'+
     renderField(distance('shared.attenuationDistance','视野范围','光线衰减到 0% 的距离，也是最大可见边界；不改变散射的远近变化。按倍数调节：2、4、8…8,192 身长。'))+
     renderField(select('shared.attenuationCurve','衰减方式',[['inverse-square','平方反比 · 近强远弱'],['smooth','平滑 · 柔和渐暗'],['linear','线性 · 匀速下降'],['exponential','指数 · 先快后慢'],['quadratic','二次 · 先慢后快']]))+
     '<div class="attenuation-plot" id="attenuation-plot"></div>';
 }
 function scatterControls(){
-  return renderField(toggle('shared.scatterEnabled','启用散射'))+
+  return '<p class="panel-description">多远之外看不清晰；从近处 100% 清晰，逐渐降到范围边缘的 0%。</p>'+renderField(toggle('shared.scatterEnabled','启用散射'))+
     renderField(distance('shared.scatterDistance','散射范围','到这个距离达到最大模糊，之后保持；不改变光线衰减的可见边界。'))+
     renderField(select('shared.scatterCurve','散射方式',[['smooth','平滑 · 柔和过渡'],['linear','线性 · 均匀增加'],['quadratic','二次 · 先慢后快'],['exponential','指数 · 后段加快'],['logarithmic','对数 · 先快后慢']]))+
     '<div class="attenuation-plot" id="scatter-plot"></div>';
 }
 function renderInspector(){
   activeFields=[];
+  if(scenes[state.currentScene].kind!=='world'){$('inspector-content').replaceChildren();return;}
   const stage='<div class="view-presets" role="group" aria-label="切换视角"><button data-dimension="0" aria-pressed="false">俯视</button><button data-dimension="100" aria-pressed="false">居民一维</button></div>'+worldView.map(renderField).join('')+'<button class="stretch-action" id="expand-shapes">上下拉满</button>';
   const behavior=renderField(select('behavior.population','居民数量',[[0,'场景预设'],[14,'14 位'],[100,'100 位'],[300,'300 位'],[1000,'1,000 位'],[2000,'2,000 位']]))+
-    renderField(select('behavior.interaction','接触',[['kill','击杀'],['touch','触摸']]))+
     renderField(select('behavior.wandering','居民运动',[[true,'自由移动'],[false,'静止']]))+
-    '<button data-action="impact">尖角碰撞</button>';
+    renderField(hint(toggle('behavior.pathfinding','自动寻路'),'开启后绕过墙和居民；关闭时直线行走，遇阻停下。'))+
+    renderField(select('behavior.interaction','是否击杀',[['kill','是'],['touch','否']]))+
+    renderField(select('behavior.residentKilling','居民是否击杀',[[true,'是'],[false,'否']]))+
+    renderField(hint(toggle('behavior.deathAnimation','击杀动画'),'被击杀的形状短暂崩解后消失；关闭时直接消失。'));
   const palette=renderField(select('shared.paintStyle','配色方案',Object.entries(PAINT_STYLES).map(([id,p])=>[id,p.name])))+paintControls()+
     '<div class="control-grid visibility-controls">'+renderField(hint(toggle('shared.coloring','显示染色'),'显示物体配色；关闭后显示灰度，不影响区分度增益或视野遮罩。'))+
     renderField(hint(number('shared.detailGain','区分度增益',0,3,1,v=>v>0?`+${v}`:String(v)),'0 关闭增强；正值增大后，角色与建筑近处边界和后退部分的明暗差更明显。染色和灰度均生效，不改变配色或视野范围。'))+
@@ -102,13 +106,14 @@ function renderInspector(){
   $('inspector-content').innerHTML=panel('palette','发光方式',palette)+panel('light','光线衰减',lightControls())+panel('scatter','散射模糊',scatterControls())+panel('stage','镜头',stage)+panel('behavior','行为',behavior);
   lightSummary();syncViewControls();syncDisabled();
 }
-function syncDisabled(){
+function syncDisabled(snapshot=api?.snapshot()){
+  if(scenes[state.currentScene].kind!=='world')return;
   controls.querySelectorAll('#inspector-content button,#inspector-content input,#inspector-content select,#scene-controls button,#scene-controls input,#scene-controls select').forEach(el=>{
     const path=el.dataset.path;
     el.disabled=!api||(['shared.attenuationDistance','shared.attenuationCurve','view.showRange'].includes(path)&&!state.shared.attenuationEnabled)||(['shared.scatterDistance','shared.scatterCurve'].includes(path)&&!state.shared.scatterEnabled);
   });
-  if($('expand-shapes'))$('expand-shapes').disabled=!api||api.snapshot().cameraProgress!==1;
-  for(const id of ['zoom-out','zoom-fit','zoom-in'])$(id).disabled=!api||api.snapshot().cameraProgress!==0||(id==='zoom-out'&&api.snapshot().overviewZoom<=.25)||(id==='zoom-in'&&api.snapshot().overviewZoom>=16);
+  if($('expand-shapes'))$('expand-shapes').disabled=!api||snapshot.cameraProgress!==1;
+  for(const id of ['zoom-out','zoom-fit','zoom-in'])$(id).disabled=!api||snapshot.cameraProgress!==0||(id==='zoom-out'&&snapshot.overviewZoom<=.25)||(id==='zoom-in'&&snapshot.overviewZoom>=16);
 }
 function sharedSettings(){return {
   // Visibility and scatter distances stay independent across every scene.
@@ -135,6 +140,7 @@ function applyAll(){
   api.configure({population:state.behavior.population});
   applyShared();
   api.set('wandering',state.behavior.wandering);api.set('interaction',state.behavior.interaction);
+  for(const key of ['pathfinding','residentKilling','deathAnimation'])api.configure({[key]:state.behavior[key]});
   applyView();
 }
 function changed(path,value){
@@ -145,6 +151,7 @@ function changed(path,value){
   else if(group==='view')applyView();
   else if(group==='behavior'){
     if(key==='population'){api.configure({population:value});applyShared();}
+    else if(['pathfinding','residentKilling','deathAnimation'].includes(key))api.configure({[key]:value});
     else api.set(key,value);
   }
   queueSave();
@@ -159,7 +166,10 @@ function syncViewControls(){
 }
 function loadScene(id){
   clearTimeout(loadTimer);api=null;state.currentScene=id;
-  const config=scenes[id];
+  const config=scenes[id],lab=config.kind!=='world';
+  document.querySelector('.studio-shell').classList.toggle('lab-active',lab);
+  document.querySelector('.inspector').hidden=lab;
+  for(const el of [$('scene-controls'),$('reset-scene'),document.querySelector('.canvas-zoom')])el.hidden=lab;
   document.title=`平面国 · ${config.title} · 工作台`;
   frame.title=`${config.title}实时预览`;
   $('loading').hidden=false;$('loading').querySelector('strong').textContent='正在准备场景';$('retry').hidden=true;
@@ -176,24 +186,25 @@ window.addEventListener('message',event=>{
   if(event.data.kind!==scenes[state.currentScene].kind)return;
   api=frame.contentWindow.flatlandStudio;
   try{
-    applyAll();
-    frame.contentDocument.getElementById('map-lock').addEventListener('change',()=>{state.view.mapLocked=api.snapshot().mapLocked;queueSave();});
+    if(scenes[state.currentScene].kind==='world'){
+      applyAll();
+      frame.contentDocument.getElementById('map-lock').addEventListener('change',()=>{state.view.mapLocked=api.snapshot().mapLocked;queueSave();});
+    }else api.configure({paintStyle:state.shared.paintStyle,customPaint:state.shared.customPaint,paintMode:state.shared.paintMode});
     clearTimeout(loadTimer);$('loading').hidden=true;syncDisabled();updateStatus();
   }catch(error){
     console.error(error);api=null;$('loading').querySelector('strong').textContent='参数接入失败，请重新加载';$('retry').hidden=false;syncDisabled();
   }
 });
 function updateStatus(){
-  if(!api)return;
+  if(!api||scenes[state.currentScene].kind!=='world')return;
   const snapshot=api.snapshot();
   $('zoom-value').textContent=`${Math.round(snapshot.overviewZoom*100)}%`;
-  $('zoom-out').disabled=snapshot.cameraProgress!==0||snapshot.overviewZoom<=.25;
-  $('zoom-in').disabled=snapshot.cameraProgress!==0||snapshot.overviewZoom>=16;
   const canvasSize=[snapshot.canvasExtent.width,snapshot.canvasExtent.height].map(value=>value.toLocaleString('zh-CN',{maximumFractionDigits:1})).join(' × ');
-  $('scene-controls').innerHTML=`<span class="scene-facts" aria-description="俯视时整个可见画布的宽乘高；1 身长等于标准成年个体的直径">${snapshot.population.toLocaleString()} 位 · 俯视画布 ${canvasSize} 身长</span>`;
+  const sceneFacts=`<span class="scene-facts" aria-description="俯视时整个可见画布的宽乘高；1 身长等于标准成年个体的直径">${snapshot.population.toLocaleString()} 位 · 俯视画布 ${canvasSize} 身长</span>`;
+  if($('scene-controls').innerHTML!==sceneFacts)$('scene-controls').innerHTML=sceneFacts;
   {
     const dimension=Math.round(snapshot.perspective*100);
-    state.view.dimension=dimension;if(snapshot.cameraProgress===1)state.view.display=snapshot.lineOnly?'line':'expanded';syncViewControls();syncDisabled();
+    state.view.dimension=dimension;if(snapshot.cameraProgress===1)state.view.display=snapshot.lineOnly?'line':'expanded';syncViewControls();syncDisabled(snapshot);
     const control=$('control-view-dimension');
     if(control&&document.activeElement!==control){control.value=dimension;control.closest('.control').querySelector('output').textContent=`${Math.round(90*(1-dimension/100))}°`;}
   }
@@ -234,7 +245,6 @@ controls.addEventListener('click',event=>{
   if(button.dataset.path){changed(button.dataset.path,typeof get(button.dataset.path)==='boolean'?button.value==='true':button.value);return;}
   if(button.dataset.dimension!==undefined){if(Number(button.dataset.dimension)<100)state.view.display='line';changed('view.dimension',Number(button.dataset.dimension));updateStatus();}
   if(button.id==='expand-shapes'){api.click('sight-expanded');updateStatus();queueSave();}
-  if(button.dataset.action==='impact')api.click('impact');
 });
 for(const [id,factor] of [['zoom-out',1/Math.SQRT2],['zoom-in',Math.SQRT2]])$(id).onclick=()=>{api.configure({overviewZoom:api.snapshot().overviewZoom*factor});updateStatus();};
 $('zoom-fit').onclick=()=>{api.configure({fitOverview:true});updateStatus();};

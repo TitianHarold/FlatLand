@@ -91,11 +91,11 @@ export class Character {
   }
 
   // Explicit input only; no autonomous controller. Releasing input stops the drive.
-  move({forward=0,side=0,turn=0}={}) {
+  move({forward=0,side=0,turn=0,speed=.8}={}) {
     if(!this.body||this.state==='dead')return;
     const angle=this.body.rotation(),c=Math.cos(angle),s=Math.sin(angle);
-    const speed=.8/Math.max(1,Math.hypot(forward,side));
-    const velocity={x:(c*forward-s*side)*speed,y:(s*forward+c*side)*speed};
+    const pace=speed/Math.max(1,Math.hypot(forward,side));
+    const velocity={x:(c*forward-s*side)*pace,y:(s*forward+c*side)*pace};
     // Keep intended motion: collision impulses may already have stopped the body
     // when the event arrives. Positive side is left relative to the head.
     this.drive={...velocity,angular:turn*1.5};

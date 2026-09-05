@@ -7,6 +7,7 @@ import './style.css';
 import {connectStudio} from './studio-bridge.js';
 import {createScatter} from './scatter.js';
 import {formatLength} from './measure.js';
+import {updateDeathEffect} from './death-effect.js';
 
 const $=id=>document.getElementById(id);
 const requestedLayout=new URLSearchParams(location.search).get('scene');
@@ -99,7 +100,13 @@ function opticalMaterial(color) {
   material.addEventListener('dispose',()=>light.dispose());
   return material;
 }
+let lightRevision=0,lightingUpdates=0;
 function updateOverviewLight(mesh, observer) {
+  const pose=mesh.userData.lightPose,x=mesh.position.x,y=mesh.position.y,angle=mesh.rotation.z;
+  // Heading changes only projection. Distance lighting changes with XY poses or optics.
+  if(pose&&pose.x===x&&pose.y===y&&pose.angle===angle&&pose.eyeX===observer.x&&pose.eyeY===observer.y&&pose.revision===lightRevision)return;
+  mesh.userData.lightPose={x,y,angle,eyeX:observer.x,eyeY:observer.y,revision:lightRevision};
+  lightingUpdates++;
   const {material,vertices}=mesh.userData.boundary;
   const boundary={...mesh.userData.boundary,material,vertices:worldVertices(vertices,mesh.position,mesh.rotation.z)};
   // Geometry-relative contrast is independent of pigment and global range.
@@ -109,7 +116,8 @@ function updateOverviewLight(mesh, observer) {
   for(let i=0;i<128;i++) {
     const sample=surfaceLight(shape.nearest+span*i/127,shape,rules),gray=exposeLight(sample,rules)*(rules.attenuationMode==='mask'?sample.reception:1);
     // Both views use optics' reception: in wash mode it dilutes the pigment.
-    pixels.set([gray,Math.round(gray*sample.reception),gray,255],i*4);
+    const offset=i*4;
+    pixels[offset]=gray;pixels[offset+1]=Math.round(gray*sample.reception);pixels[offset+2]=gray;pixels[offset+3]=255;
   }
   mesh.material.uniforms.range.value.set(shape.nearest,span);light.needsUpdate=true;
   mesh.material.uniforms.coloring.value=Number(rules.coloring);
@@ -154,11 +162,12 @@ box.setAttribute('edgeStart',new THREE.Float32BufferAttribute(wallStarts,2));box
 for(const [i,w] of sim.walls.entries()) {
   const {x,y}=w.collider.halfExtents(),pos=w.collider.translation();
   const mesh=new THREE.Mesh(box,wallMaterial);
-  mesh.position.set(pos.x,pos.y,.035);mesh.rotation.z=w.collider.rotation();mesh.scale.set(x*2,y*2,.07);
+  mesh.position.set(pos.x,pos.y,PLANE_HEIGHT);mesh.rotation.z=w.collider.rotation();mesh.scale.set(x*2,y*2,shapeHeight);
   mesh.userData.boundary={...wallBoundaries[i],vertices:[{x:-x,y:-y},{x,y:-y},{x,y},{x:-x,y}]};
   worldGroup.add(mesh);wallMeshes.push(mesh);
 }
 const entityMeshes=new Map();
+let deathAnimation=false;
 function addMesh(e) {
   setScenePaintStyle([e],rules,rules.paintStyle);
   const vertices=e.vertices,edges=e.paintedEdges??vertices.map((a,i)=>({a,b:vertices[(i+1)%vertices.length]}));
@@ -195,6 +204,10 @@ const rangeCircle=new THREE.Line(new THREE.BufferGeometry().setFromPoints(
   new THREE.LineDashedMaterial({color:'#8fae80',transparent:true,opacity:.55,depthWrite:false,dashSize:.055,gapSize:.035}));
 rangeCircle.computeLineDistances();scene.add(rangeCircle);
 const ring=new THREE.Mesh(new THREE.RingGeometry(.43,.45,48),new THREE.MeshBasicMaterial({color:'#829972',transparent:true,opacity:.55,side:THREE.DoubleSide}));scene.add(ring);
+const targetMarker=new THREE.Mesh(new THREE.CircleGeometry(1,24),new THREE.MeshBasicMaterial({color:'#f1d575',depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+targetMarker.layers.set(2);targetMarker.renderOrder=10;targetMarker.visible=false;scene.add(targetMarker);
+let targetMarkerUntil=0;
+function markTarget(target){targetMarker.position.set(target.x,target.y,.09);targetMarkerUntil=performance.now()+900;}
 for(const guide of [cone,rangeCircle,ring])guide.traverse(part=>part.layers.set(2));
 if(parade)ring.scale.setScalar(4);
 const labelElements=(openScene?[]:labels).map(([name,x,y,cls,sub])=>{
@@ -263,6 +276,7 @@ function drawMini(observer) {
   }
   mini.setLineDash([]);
   function drawResident(e) {
+    if(e.state==='dead')return;
     const pos=e.body.translation(),angle=e.body.rotation();
     // Small residents get a readable map symbol without changing world geometry.
     const size=Math.max(...e.vertices.map(v=>Math.hypot(v.x,v.y)));
@@ -344,7 +358,7 @@ function updateViewDescription() {
     :targetPerspective>.1?'逐渐进入平面，明暗始终以观察者为基准。':'移动观察者，比较世界明暗与眼前的光。';
 }
 function setPerspective(value) {
-  clearTimeout(clickTimer);sim.aimAt(null);
+  clearTimeout(clickTimer);sim.aimAt(null);pendingTurn=0;
   if(value!==targetPerspective)setStretch(false,value===1&&perspective===1);
   targetPerspective=value;$('perspective').value=Math.round(value*100);
   for(const [id,selected] of [['overview',value===0],['resident',value===1]]){$(id).classList.toggle('selected',selected);$(id).setAttribute('aria-pressed',selected);}
@@ -363,12 +377,13 @@ $('resident-window').oninput=()=>{
   $('resident-window-value').textContent=`${value}%`;
 };
 $('contour').checked=rules.contour>0;
-$('contour').onchange=e=>{rules.contour=e.target.checked?OPTICS_RULES.contour:0;};
+$('contour').onchange=e=>{rules.contour=e.target.checked?OPTICS_RULES.contour:0;lightRevision++;};
 $('finish').value=rules.finish;
-$('finish').onchange=e=>{rules.finish=e.target.value;};
+$('finish').onchange=e=>{rules.finish=e.target.value;lightRevision++;};
 $('coloring').checked=rules.coloring;
-$('coloring').onchange=e=>{rules.coloring=e.target.checked;};
+$('coloring').onchange=e=>{rules.coloring=e.target.checked;lightRevision++;};
 function setPaintStyle(styleId) {
+  lightRevision++;
   setScenePaintStyle(sim.entities,rules,styleId);
   wallMaterial.uniforms.tint.value.set(...opticalTint(rules.materials.house.color));
   for(const character of sim.entities){
@@ -394,7 +409,7 @@ if(maskTest){
   $('scene-layout').add(new Option('同心圆遮罩','mask'));
 }
 if(stars){
-  $('scene-name').textContent='星野';$('scene-subtitle').textContent='远处居民';
+  $('scene-name').textContent='星野';$('scene-subtitle').textContent='近邻与远处居民';
   $('reset').textContent='回到中心';document.title='平面国 · 星野';
   $('scene-layout').add(new Option('星野','stars'));
 }
@@ -407,7 +422,7 @@ $('scene-layout').onchange=()=>{
 $('population').onchange=e=>{const n=sim.population(Number(e.target.value));toast(`${n} 位居民 · 二维碰撞持续运行`);container.focus({preventScroll:true});};
 $('interaction').value=sim.player.interaction;
 $('interaction').onchange=e=>{
-  keys.clear();sim.player.stop();sim.player.setInteraction(e.target.value);
+  keys.clear();sim.aimAt(null);sim.player.stop();sim.player.setInteraction(e.target.value);
   toast(e.target.value==='kill'?'击杀：主动用尖角或端点撞中对方；侧边接触停住':'触摸：接触停住，双方存活');container.focus({preventScroll:true});
 };
 $('reset').onclick=()=>{
@@ -415,12 +430,12 @@ $('reset').onclick=()=>{
   let found=false;for(const p of [sim.home,...(openScene?[]:[point(320,270),point(310,295),point(290,285)])])if(sim.relocate(p)){found=true;break;}
   if(found){sim.player.body.setRotation(Math.PI/2,true);toast(maskTest?'已回到圆心':parade?'已回到检阅场入口':'已回到客厅');}else toast('这里暂时拥挤，请双击其他空地');
 };
-$('impact').onclick=()=>{if(sim.startImpact()){toast('尖角主动撞击 → 目标死亡，保留淡色轮廓');setPerspective(0);}else toast('附近空间不足，请先切回 14 位居民或换个位置');};
 $('reference').onclick=()=>{$('reference-dialog').showModal();keys.clear();};$('close-reference').onclick=()=>$('reference-dialog').close();
 $('reference-dialog').addEventListener('click',e=>{if(e.target===$('reference-dialog'))$('reference-dialog').close();});
 addEventListener('keydown',e=>{
   if($('reference-dialog').open||['INPUT','SELECT'].includes(e.target.tagName)||(e.target.tagName==='BUTTON'&&e.code==='Space'))return;
   if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){clearTimeout(clickTimer);sim.aimAt(null);}
   if(e.code==='Space'&&!e.repeat)setPerspective(targetPerspective>.5?0:1);
   keys.add(e.code);
 });
@@ -442,26 +457,30 @@ container.addEventListener('pointerdown',e=>{
   sim.aimAt(null);container.focus({preventScroll:true});container.setPointerCapture(e.pointerId);
   drag={startX:e.clientX,startY:e.clientY,x:e.clientX,moved:false};suppressClick=false;
 });
-container.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x;drag.x=e.clientX;if(Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>5)drag.moved=true;if(drag.moved)pendingTurn-=dx*.005;});
+container.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x;drag.x=e.clientX;if(Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>5)drag.moved=true;if(drag.moved&&perspective===1)pendingTurn-=dx*.005;});
 container.addEventListener('pointerup',()=>{suppressClick=!!drag?.moved;drag=null;});
 container.addEventListener('pointercancel',()=>{drag=null;suppressClick=true;});
 container.addEventListener('click',e=>{
   clearTimeout(clickTimer);
   if(suppressClick||e.detail!==1)return;
-  let target;
-  if(perspective===1){
+  let target;const resident=perspective===1;
+  if(resident){
     const observer=currentObserver(),rect=container.getBoundingClientRect();
     const direction=sightDirection(observer,(e.clientX-rect.left)/rect.width);
     if(!direction)return;
     target={x:observer.x+direction.x,y:observer.y+direction.y};
   }else target=groundPoint(e);
-  if(target)clickTimer=setTimeout(()=>sim.aimAt(target),350);
+  if(target&&!resident)markTarget(target);
+  if(target)clickTimer=setTimeout(()=>{
+    if(resident)sim.aimAt(target);
+    else if(!sim.walkTo(target))toast('目的地被墙或居民占据，请选择空地');
+  },350);
 });
 container.addEventListener('dblclick',e=>{
   e.preventDefault();clearTimeout(clickTimer);sim.aimAt(null);
   if(suppressClick)return;
   const target=groundPoint(e);
-  if(target)toast(sim.relocate(target)?'观察者已移动到这里':'角色轮廓会与墙或居民重叠，请选择空地');
+  if(target){markTarget(target);toast(sim.relocate(target)?'观察者已移动到这里':'角色轮廓会与墙或居民重叠，请选择空地');}
 });
 addEventListener('blur',()=>clearTimeout(clickTimer));
 function animate(now) {
@@ -470,6 +489,7 @@ function animate(now) {
   while(accumulator>=1/60) {
     const mouseTurn=Math.max(-3,Math.min(3,pendingTurn/(1.5/60)));pendingTurn-=mouseTurn*1.5/60;
     sim.step({forward:held('KeyW','ArrowUp')-held('KeyS','ArrowDown'),side:held('KeyQ')-held('KeyE'),turn:held('KeyA','ArrowLeft')-held('KeyD','ArrowRight')+mouseTurn});accumulator-=1/60;
+    if(sim.walkStatus==='blocked'){toast(sim.pathfinding?'没有找到可通行的路线，请换一个目的地':'前方有障碍，已停止移动');sim.aimAt(null);}
   }
   const progress=Math.min(1,(now-windowStarted)/300),ease=(1-Math.cos(Math.PI*progress))/2;
   if(progress===1||reducedMotion.matches)flatWindow.value.copy(windowTo);
@@ -482,7 +502,6 @@ function animate(now) {
     if(Math.abs(perspective-targetPerspective)<.0005)perspective=targetPerspective;
   }
   if(previousPerspective!==1&&perspective===1)setStretch(expandOnArrival);
-  const currentHeight=shapeHeight;
   const observer=currentObserver();
   const t=perspective,p=observer,residentView=t===1;
   const heading=Math.PI/2-observer.heading,eased=t*t*(3-2*t);
@@ -491,9 +510,8 @@ function animate(now) {
   // Fit the actual scene once; viewport zoom is independent of the resident lens.
   const framedWidth=Math.max(overviewBounds.max.x-overviewBounds.min.x,(overviewBounds.max.y-overviewBounds.min.y)*width/height)*1.08/overviewZoom;
   const topDistance=framedWidth/(2*Math.tan(observer.fov/2));
-  // The descending camera orbits the observer. The map centre is only for
-  // the fully overhead overview; it is not a second moving camera pivot.
-  const location=t===0?centre:new THREE.Vector3(p.x,p.y,0);
+  // Blend from the fitted canvas centre into the observer without a first-frame jump.
+  const location=new THREE.Vector3(centre.x+(p.x-centre.x)*eased,centre.y+(p.y-centre.y)*eased,0);
   const elevation=(1-t)*Math.PI/2,distance=topDistance*(1-eased);
   camera.position.set(location.x-Math.cos(heading)*Math.cos(elevation)*distance,location.y-Math.sin(heading)*Math.cos(elevation)*distance,PLANE_HEIGHT+Math.sin(elevation)*distance);
   camera.up.set(0,Math.sin(elevation),Math.cos(elevation)).normalize();
@@ -511,7 +529,6 @@ function animate(now) {
     const size=([5,2,1].find(n=>n*magnitude*pixelsPerLength<=110)??1)*magnitude;
     scaleBar.style.width=`${size*pixelsPerLength}px`;scaleBar.textContent=formatLength(size);
   }
-  for(const wall of wallMeshes){wall.scale.z=currentHeight;wall.position.z=PLANE_HEIGHT;}
   if(wallMeshes.length)updateOverviewLight(wallMeshes[0],p);
   const present=new Set(sim.entities.map(e=>e.id));
   for(const [id,mesh] of entityMeshes)if(!present.has(id)){
@@ -520,17 +537,11 @@ function animate(now) {
   }
   for(const e of sim.entities) {
     let mesh=entityMeshes.get(e.id);
-    mesh??=addMesh(e);const pos=e.body.translation();mesh.position.set(pos.x,pos.y,PLANE_HEIGHT-currentHeight/2);mesh.rotation.z=e.body.rotation();mesh.scale.z=currentHeight;
-    mesh.visible=(e!==sim.player||t===0)&&(e.state!=='dead'||!residentView);
+    mesh??=addMesh(e);const pos=e.body.translation();mesh.position.set(pos.x,pos.y,PLANE_HEIGHT-shapeHeight/2);mesh.rotation.z=e.body.rotation();mesh.scale.z=shapeHeight;
+    const visible=updateDeathEffect(mesh,e,now,deathAnimation&&!reducedMotion.matches);
+    mesh.visible=(e!==sim.player||t===0)&&visible;
     mesh.children.forEach(outline=>{outline.visible=!residentView;});
     if(mesh.visible)updateOverviewLight(mesh,p);
-    if(e.state==='dead'){
-      // Like the character lab, keep the last outline as a state annotation.
-      // It has no active body, fill or optical occlusion in the resident's world.
-      mesh.geometry.setDrawRange(0,0);mesh.material.transparent=true;
-      mesh.material.depthWrite=false;mesh.material.uniforms.fade.value=.3;
-      mesh.material.uniforms.coloring.value=0;
-    }
   }
   cone.position.set(p.x,p.y,.012);cone.visible=t<.75;
   const guideExtent=maskRadius.value>0?maskRadius.value:topDistance*2*Math.tan(observer.fov/2)+Math.hypot(p.x-centre.x,p.y-centre.y);
@@ -543,6 +554,9 @@ function animate(now) {
   rangeCircle.visible=t===0&&maskRadius.value>0&&$('show-range').checked;
   rangeCircle.position.set(p.x,p.y,.012);rangeCircle.scale.setScalar(maskRadius.value);
   ring.position.set(p.x,p.y,.08);ring.visible=t===0;
+  if(sim.walkTarget){markTarget(sim.walkTarget);}
+  targetMarker.visible=t===0&&now<targetMarkerUntil;
+  targetMarker.scale.setScalar(canvasWidth/width*5);
   $('labels').style.opacity=Math.max(0,1-t*3.7);
   for(const {el,position} of labelElements){const pos=position.clone().project(camera);el.style.left=`${(pos.x*.5+.5)*width}px`;el.style.top=`${(-pos.y*.5+.5)*height}px`;}
   $('sight-display').hidden=!residentView;
@@ -556,7 +570,6 @@ function animate(now) {
   if(!sightPreview.hidden)drawSightPreview(observer);
   frames++;if(now-statsAt>750){fps=Math.round(frames*1000/(now-statsAt));frames=0;statsAt=now;const alive=sim.entities.filter(e=>e.state!=='dead').length;$('performance').textContent=`${alive} 位居民 · ${fps} FPS · 二维碰撞已开启`;}
   $('coordinates').textContent=`X ${p.x.toFixed(2)}  /  Y ${p.y.toFixed(2)} 身长  ·  ${sim.touching?'接触边界':'自由移动'}`;
-  $('impact').disabled=!!sim.demo;
   collisionCooldown-=delta;if(sim.touching&&keys.size&&collisionCooldown<=0){toast('遇到边界 · 可以沿墙移动');collisionCooldown=3;}
   toastTime-=delta;if(toastTime<=0)$('toast').classList.remove('visible');
   requestAnimationFrame(animate);
@@ -564,6 +577,10 @@ function animate(now) {
 $('loading').remove();container.focus({preventScroll:true});requestAnimationFrame(animate);
 connectStudio('world',{
   configure(values){
+    if(Object.hasOwn(values,'pathfinding'))sim.setPathfinding(values.pathfinding);
+    if(Object.hasOwn(values,'residentKilling'))sim.setResidentKilling(values.residentKilling);
+    if(Object.hasOwn(values,'deathAnimation'))deathAnimation=Boolean(values.deathAnimation);
+    lightRevision++;
     if(Object.hasOwn(values,'population')){sim.population(values.population);fitOverview();}
     if(values.fitOverview)fitOverview();
     if(Number.isFinite(values.overviewZoom))overviewZoom=THREE.MathUtils.clamp(values.overviewZoom,.25,16);
@@ -576,9 +593,10 @@ connectStudio('world',{
     if(rules.visionEffect==='attenuation')scatter.clear();
     for(const [material,key] of [['resident','residentEmission'],['house','houseEmission']])if(Object.hasOwn(values,key))rules.materials={...rules.materials,[material]:{...rules.materials[material],emission:values[key]}};
   },
-  snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},layout,projection,canvasExtent:{width:canvasWidth,height:canvasHeight},overviewZoom,perspective:targetPerspective,cameraProgress:perspective,
+  snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},walkTarget:sim.walkTarget,pathfinding:sim.pathfinding,residentKilling:sim.residentKilling,deathAnimation,targetMarker:{visible:targetMarker.visible,x:targetMarker.position.x,y:targetMarker.position.y},lightingUpdates,observerScreen:new THREE.Vector3(overviewEye.value.x,overviewEye.value.y,PLANE_HEIGHT).project(camera).toArray().slice(0,2),layout,projection,canvasExtent:{width:canvasWidth,height:canvasHeight},overviewZoom,perspective:targetPerspective,cameraProgress:perspective,
     rangeGuide:{visible:rangeCircle.visible,radius:rangeCircle.scale.x,x:rangeCircle.position.x,y:rangeCircle.position.y,rayLength:Math.hypot(sightGuides[0].line.geometry.attributes.position.getX(1),sightGuides[0].line.geometry.attributes.position.getY(1))},
-    mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.length,wandering:sim.wandering,
+    mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.filter(e=>e.state!=='dead').length,wandering:sim.wandering,
+    deathEffects:{active:[...entityMeshes.values()].filter(m=>m.userData.death).length,visible:[...entityMeshes.values()].filter(m=>m.userData.deathSeen&&m.visible).length},
     optics:{displayEnhancement:rules.contour>0&&rules.detailGain>0,detailGain:rules.detailGain,detailStyle:rules.detailStyle??'sharp',visionEffect:rules.visionEffect,scatterDistance:rules.scatterDistance,scatterCurve:rules.scatterCurve,exposure:rules.exposure,fog:rules.fog,attenuationMode:rules.attenuationMode,attenuationCurve:rules.attenuationCurve,attenuationDistance:rules.attenuationDistance,attenuationFloor:rules.attenuationFloor,residentEmission:rules.materials.resident.emission,houseEmission:rules.materials.house.emission},
     paint:PAINT_STYLES[rules.paintStyle],interaction:sim.player.interaction,playerState:sim.player.state}),
 });

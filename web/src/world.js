@@ -1,5 +1,6 @@
 import {Character, characterTypes, RAPIER} from './characters.js';
 import {MASK_FIELD,makeCrowd} from './study-scene.js';
+import {findRoute} from './navigation.js';
 
 // The supplied plan maps 35 drawing pixels to one body length in world XY.
 export const point = (x, y) => ({ x: (x - 335) / 35, y: (270 - y) / 35 });
@@ -23,7 +24,7 @@ export const labels = [
   ['地窖',427,454,'',''],['孙子们的房间',256,421,'small-label',''],['入口',124,401,'small-label',''],['入口',584,284,'small-label',''],['我的妻子',285,373,'small-label','']
 ];
 let initialized;
-export async function createSimulation({layout='house',wandering=layout==='house'}={}) {
+export async function createSimulation({layout='house',wandering=layout==='house',pathfinding=false,residentKilling=false}={}) {
   initialized ??= RAPIER.init();
   await initialized;
   const world = new RAPIER.World({x:0,y:0});
@@ -40,7 +41,8 @@ export async function createSimulation({layout='house',wandering=layout==='house
   const walkers=new Map();
   let walkSeed=731;
   const walkRandom=()=>{walkSeed=(Math.imul(walkSeed,1664525)+1013904223)>>>0;return walkSeed/4294967296;};
-  let nextId=0, demo=null, aim=null;
+  let nextId=0, aim=null, walkTarget=null, blockedTime=0;
+  let route=[],routeSearch=null,routeCheck=0,walkStatus='idle';
   for (const [x1,y1,x2,y2,kind] of layout==='house'?wallData:[]) {
     const a=point(x1,y1), b=point(x2,y2), length=Math.hypot(b.x-a.x,b.y-a.y), angle=Math.atan2(b.y-a.y,b.x-a.x);
     const collider=world.createCollider(RAPIER.ColliderDesc.cuboid(length/2,.04).setTranslation((a.x+b.x)/2,(a.y+b.y)/2).setRotation(angle).setContactSkin(.003).setFriction(.2).setRestitution(0));
@@ -53,12 +55,15 @@ export async function createSimulation({layout='house',wandering=layout==='house
     const e=new Character(nextId++,characterTypes.find(t=>t.id===type),{size,name,...(shape?{shape}:{})}).attach(world,{x,y,angle});
     e.role=role;entities.push(e);byCollider.set(e.collider.handle,e);
     if(['resident','crowd','sample'].includes(role)){
-      e.setInteraction('touch');
+      e.setInteraction(residentKilling?'kill':'touch');
       walkers.set(e,{heading:angle,time:2+walkRandom()*3,escape:null,nearby:new RAPIER.Ball(e.radius+.06)});
     }
     return e;
   }
   const player=addEntity({...home,type:'regular-4',size:.56,angle:Math.PI/2,name:'你 · 正方形',role:'player'});
+  // Circumcircle leaves room to turn at corners, with a small steering margin.
+  const walkingShape=new RAPIER.Ball(player.radius+.04);
+  const castWalk=(a,b)=>world.castShape(a,0,{x:b.x-a.x,y:b.y-a.y},walkingShape,0,1,false,undefined,undefined,player.collider);
   if(layout==='house'){
   for (const [x,y,n,size] of [[280,120,5,.78],[221,175,5,.78],[162,226,5,.72],[144,300,5,.60],[217,470,6,.5],[292,464,6,.62]]) addEntity({...point(x,y),type:`regular-${n}`,size,angle:.25});
   for (const [x,y] of [[480,339],[472,362],[465,385]]) addEntity({...point(x,y),type:'narrow-triangle',angle:2.9,name:'仆役'});
@@ -69,7 +74,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   function fieldPopulation(total){
     if(stars){
-      for(const p of makeCrowd(total))addEntity({...p,type:'regular-5',shape:{kind:'regular',sides:p.sides},role:'sample'});
+      for(const p of makeCrowd(total,{nearby:true}))addEntity({...p,type:'regular-5',shape:{kind:'regular',sides:p.sides},role:'sample'});
       return;
     }
     const original=Array.from({length:MASK_FIELD.rings},(_,i)=>MASK_FIELD.count(i+1));
@@ -94,13 +99,25 @@ export async function createSimulation({layout='house',wandering=layout==='house
     let blocked=false;
     world.intersectionsWithShape(pos,player.body.rotation(),player.collider.shape,()=>{blocked=true;return false;},undefined,undefined,player.collider);
     if(blocked)return false;
-    aim=null;player.stop();player.body.setTranslation(pos,true);world.step(events);dispatchContacts();return true;
+    aimAt(null);player.stop();player.body.setTranslation(pos,true);world.step(events);dispatchContacts();return true;
   }
   function aimAt(pos) {
-    aim=null;
+    aim=null;walkTarget=null;blockedTime=0;route=[];routeSearch=null;routeCheck=0;walkStatus='idle';
     if(!pos||player.state==='dead')return;
     const p=player.body.translation();
     if(Math.hypot(pos.x-p.x,pos.y-p.y)>1e-6)aim=Math.atan2(pos.y-p.y,pos.x-p.x);
+  }
+  function walkTo(pos) {
+    aimAt(null);
+    if(!pos||player.state==='dead'||!Number.isFinite(pos.x)||!Number.isFinite(pos.y))return false;
+    if(pathfinding&&occupied(pos,walkingShape.radius,player))return false;
+    walkTarget={x:pos.x,y:pos.y};
+    if(pathfinding)planWalk();else{route=[walkTarget];walkStatus='walking';}
+    return true;
+  }
+  function planWalk(){
+    aim=null;route=[];blockedTime=0;walkStatus='planning';player.stop();
+    routeSearch=findRoute({...player.body.translation()},walkTarget,castWalk);
   }
   function remove(e) {
     const index=entities.indexOf(e);if(index<0)return;
@@ -111,6 +128,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   const defaultPopulation=parade?1000:entities.length;
   function population(count) {
+    aimAt(null);
     count=count||defaultPopulation;
     // Placement advances physics to refresh queries, so pause existing motion first.
     for(const e of entities)e.stop();
@@ -144,21 +162,19 @@ export async function createSimulation({layout='house',wandering=layout==='house
     }
     return entities.filter(e=>e.state!=='dead').length;
   }
-  function startImpact() {
-    if(demo)return false;
-    for(const p of [point(315,230),point(320,310),point(289,262),{x:0,y:-8}]) {
-      const start={x:p.x-.95,y:p.y}, end={x:p.x+.85,y:p.y};
-      if(occupied(p,1.35)||occupied(start,.6)||occupied(end,.6))continue;
-      const attacker=addEntity({...start,type:'narrow-triangle',size:.8,role:'attacker',name:'尖角三角形'});
-      const target=addEntity({...end,type:'regular-5',size:.8,angle:Math.PI,role:'target',name:'碰撞目标'});
-      demo={attacker,target,time:0};world.step(events);dispatchContacts();return true;
-    }
-    return false;
-  }
   let touching=false;
   function setWandering(enabled) {
     wandering=enabled;
     if(!enabled)for(const e of walkers.keys())e.stop();
+  }
+  function setPathfinding(enabled){
+    pathfinding=Boolean(enabled);
+    const target=walkTarget;aimAt(null);player.stop();
+    if(target)walkTo(target);
+  }
+  function setResidentKilling(enabled){
+    residentKilling=Boolean(enabled);
+    for(const e of walkers.keys())e.setInteraction(residentKilling?'kill':'touch');
   }
   // The studio supplies intentions; Character.move and Rapier still own all motion.
   function wander(dt,initiators) {
@@ -169,6 +185,9 @@ export async function createSimulation({layout='house',wandering=layout==='house
       if(!walk.escape){
         let x=0,y=0;
         world.intersectionsWithShape(e.body.translation(),0,walk.nearby,other=>{
+          // Killing residents may approach each other; walls still repel them.
+          const target=byCollider.get(other.handle);
+          if(residentKilling&&target instanceof Character&&target!==player)return true;
           const contact=e.collider.contactCollider(other,.06);
           if(contact){x-=contact.normal1.x;y-=contact.normal1.y;}
           return true;
@@ -206,7 +225,36 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   function step(input={forward:0,side:0,turn:0},dt=1/60) {
     const controls={...input};
-    if(input.forward||input.side||input.turn)aim=null;
+    if(input.forward||input.side||input.turn||player.state==='dead')aimAt(null);
+    const before=walkTarget?player.body.translation():null;
+    if(walkTarget){
+      if(routeSearch){
+        const result=routeSearch.next();
+        if(result.done){
+          routeSearch=null;route=result.value??[];routeCheck=0;
+          if(route.length)walkStatus='walking';
+          else{aimAt(null);walkStatus='blocked';}
+        }
+      }
+      if(route.length){
+        if(Math.hypot(route[0].x-before.x,route[0].y-before.y)<.025){route.shift();routeCheck=0;}
+        if(!route.length)aimAt(null);
+        else{
+          routeCheck-=dt;
+          if(pathfinding&&routeCheck<=0){
+            routeCheck=.2;
+            if(castWalk(before,route[0]))planWalk();
+          }
+          if(route.length){
+            const dx=route[0].x-before.x,dy=route[0].y-before.y,distance=Math.hypot(dx,dy);
+            aim=Math.atan2(dy,dx);
+            const delta=aim-player.body.rotation();
+            // Turn before advancing, including at planned corners.
+            controls.forward=Math.cos(delta)>.995?Math.min(1,distance*6):0;
+          }
+        }
+      }
+    }
     if(aim!==null){
       const delta=Math.atan2(Math.sin(aim-player.body.rotation()),Math.cos(aim-player.body.rotation()));
       if(Math.abs(delta)<.001)aim=null;
@@ -214,21 +262,24 @@ export async function createSimulation({layout='house',wandering=layout==='house
     }
     const initiators=new Set();
     if(controls.forward||controls.side||controls.turn)initiators.add(player);
-    player.move(controls);
+    player.move({...controls,speed:1});
     wander(dt,initiators);
-    if(demo) {
-      demo.time+=dt;
-      const forward=demo.target.state!=='dead'&&demo.time<3?1:0;
-      demo.attacker.move({forward});if(forward)initiators.add(demo.attacker);
-    }
     world.step(events);
     dispatchContacts(initiators);
-    if(demo?.time>4){remove(demo.attacker);remove(demo.target);demo=null;}
     touching=false;
     if(player.state!=='dead')world.contactPairsWith(player.collider,c=>world.contactPair(player.collider,c,m=>{if(m.numSolverContacts()>0)touching=true;}));
+    if(walkTarget){
+      const after=player.body.translation();
+      blockedTime=touching&&Math.hypot(after.x-before.x,after.y-before.y)<.001?blockedTime+dt:0;
+      if(player.state==='dead'){aimAt(null);player.stop();}
+      else if(blockedTime>.3){
+        if(pathfinding)planWalk();
+        else{aimAt(null);player.stop();walkStatus='blocked';}
+      }
+    }
   }
   world.step(events);events.clear();
   if(parade)population(1000);
-  return {world,events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,occupied,population,startImpact,remove,setWandering,get wandering(){return wandering;},get touching(){return touching;},get demo(){return demo;},dispose(){events.free();world.free();}};
+  return {world,events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
 }
 export {RAPIER};
