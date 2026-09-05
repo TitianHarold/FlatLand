@@ -34,7 +34,7 @@ const overviewEye={value:new THREE.Vector2()};
 const maskRadius={value:0};
 const viewportSize={value:new THREE.Vector2(innerWidth,innerHeight)};
 const viewportOrigin={value:new THREE.Vector2()};
-const PLANE_HEIGHT=.032,shapeHeight=.05;
+const PLANE_HEIGHT=.032,shapeHeight=.05/3;
 // X blends the zero-degree 3D view into a flat window; Y is its screen height.
 const flatWindow={value:new THREE.Vector2(0,0)};
 const receiving={value:new THREE.Vector2(0,Math.PI/3)},eyeForward={value:new THREE.Vector2(0,1)};

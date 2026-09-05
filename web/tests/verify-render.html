@@ -94,7 +94,7 @@ window.addEventListener('message',async function ready(event){
     assert((await readRow(.5,true)).every((v,i)=>v===idleRow[i]),'强制重算和复用缓存的真实画面像素完全一致');
     const {cameraFov,cameraAspect}=api.snapshot();
     assert(api.snapshot().observerVisible,'完全俯视时保留观察者');
-    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05&&api.snapshot().stretch===0,'实体基础高度固定为 0.05 身长');
+    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3&&api.snapshot().stretch===0,'实体与墙的基础高度缩为原来的三分之一');
     assert(!frame.contentDocument.getElementById('shape-height'),'独立场景也去掉基础高度调节');
     assert(api.snapshot().renderPoints===0,'没有粒子渲染');
     const preview=frame.contentDocument.getElementById('sight-preview'),minimap=frame.contentDocument.getElementById('minimap-panel');
@@ -123,7 +123,7 @@ window.addEventListener('message',async function ready(event){
     assert(preview.hidden&&!minimap.hidden,'居民视角切回位置地图，不叠加视野小窗');
     assert(api.snapshot().cameraFov===cameraFov&&api.snapshot().cameraAspect===cameraAspect,'下降到底保持同一透视镜头，不在末段拉伸');
     assert(api.snapshot().lineOnly&&api.snapshot().stretch===0,'下降终点自然停留在一维，没有自动拉伸');
-    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05,'下降只移动相机，形状保持设定的基础高度');
+    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3,'下降只移动相机，形状保持设定的基础高度');
     const residentCanvas=frame.contentDocument.querySelector('#scene canvas');
     assert(api.snapshot().windowBlend<1,'镜头先到 0°，窗口随后展开');
     await until(()=>api.snapshot().windowBlend===1);
@@ -273,7 +273,7 @@ window.addEventListener('message',async function ready(event){
     await until(()=>api.snapshot().stretch>0);
     assert(api.snapshot().stretch<1,'上下拉满经过动画中间状态');
     await until(()=>api.snapshot().stretch===1);await nextFrame();
-    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05,'拉满不再加高实体或墙，不产生透视柱体');
+    assert(api.snapshot().geometryHeight===.05/3&&api.snapshot().wallHeight===.05/3,'拉满不再加高实体或墙，不产生透视柱体');
     assert(api.snapshot().windowHeight===100&&residentCanvas.height>1,'同一 3D 几何上下铺满黑色视口');
     for(const y of [.02,.1,.5,.9,.98])assert((await readRow(y)).every((v,i)=>v===baselineRow[i]),`${y} 高度的颜色与中央细线完全一致`);
     assert(api.snapshot().renderPoints===0,'拉满也不生成粒子');
@@ -283,7 +283,7 @@ window.addEventListener('message',async function ready(event){
     frame.style.height='320px';
     await until(()=>Math.abs(residentCanvas.getBoundingClientRect().height-320)<1);
     assert(api.snapshot().windowHeight===100,'窗口变矮自动填满，无手动幅度');
-    assert(api.snapshot().geometryHeight===.05&&residentCanvas.getBoundingClientRect().height===320,'填满和改变窗口尺寸均不改变基础高度');
+    assert(api.snapshot().geometryHeight===.05/3&&residentCanvas.getBoundingClientRect().height===320,'填满和改变窗口尺寸均不改变基础高度');
     api.click('sight-expanded');await until(()=>api.snapshot().stretch===0);await nextFrame();
     assert(api.snapshot().windowHeight===8,'收回恢复用户的一维窗口');
     api.click('sight-expanded');await until(()=>api.snapshot().stretch===1);
@@ -366,13 +366,13 @@ window.addEventListener('message',async function ready(event){
     const zoomCanvas=panel.querySelector('#preview').contentDocument.getElementById('scene');
     zoomCanvas.dispatchEvent(new frame.contentWindow.WheelEvent('wheel',{deltaY:-100,bubbles:true,cancelable:true}));
     await until(()=>studioView().overviewZoom>1);
-    assert(studioView().optics.attenuationDistance===2048&&studioView().shapeHeight===.05,'滚轮只缩放画布，不改变遮罩和实体高度');
+    assert(studioView().optics.attenuationDistance===2048&&studioView().shapeHeight===.05/3,'滚轮只缩放画布，不改变遮罩和实体高度');
     panel.getElementById('zoom-fit').click();await until(()=>studioView().overviewZoom===1&&Math.abs(studioView().canvasExtent.width-fittedWidth)<1e-6);
     assert(!panel.getElementById('control-shared-scatterAmount'),'散射删除百分比，改用渐变曲线');
     input('control-view-windowHeight','20');await nextFrame();
     const view=panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
     assert(panel.querySelector('#control-view-projection').textContent==='画面未矫正画面矫正','镜头名称对应直线接收未矫正、等角展开已矫正');
-    assert(view.shapeHeight===.05&&view.stretch===0&&!panel.getElementById('control-view-shapeHeight'),'工作台固定 0.05 身长，并删除基础高度滑条');
+    assert(view.shapeHeight===.05/3&&view.stretch===0&&!panel.getElementById('control-view-shapeHeight'),'工作台沿用缩为三分之一的基础高度，无独立高度滑条');
     assert(!panel.querySelector('#control-shared-finish,#control-shared-contour,#control-view-stretchHeight,#control-view-stretchStyle,#control-view-particleDensity'),'移除成像、辨形、拉伸幅度、特效和粒子设置');
     assert([...panel.querySelectorAll('.config-panel h2')].map(el=>el.textContent).join('/')==='发光方式/光线衰减/散射模糊/镜头/行为','五个面板各司其职');
     assert(panel.querySelectorAll('.paint-grid input[type=color]').length===6&&!/头部|中段|尾部/.test(panel.querySelector('.paint-grid').textContent),'五枚主题色与独立建筑颜色，删除渐变分组');
