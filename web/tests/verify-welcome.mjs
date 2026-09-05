@@ -43,29 +43,31 @@ assert.equal(sampleEntrance(ENTRANCE_DURATION).opacity,0);
 const copySource=(await readFile(new URL('../src/copy-prompt.js',import.meta.url),'utf8')).replace('export function','function');
 const source=copySource+'\n'+(await readFile(new URL('../src/welcome.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const html=await readFile(new URL('../welcome.html',import.meta.url),'utf8');
-function page({hash='',reduced=false,catalogue=[],canvas=true,clipboard=true,legacyCopy=false,preset}={}){
+function page({hash='',reduced=false,catalogue=[],canvas=true,clipboard=true,legacyCopy=false,preset,theme='dark'}={}){
   const element=()=>({hidden:false,inert:false,style:{setProperty(k,v){this[k]=v;}},children:[],events:{},classList:{add(){},remove(){}},
     append(...children){this.children.push(...children);},addEventListener(name,fn){this.events[name]=fn;},setAttribute(name,value){this[name]=value;},focus(){this.focused=true;},select(){this.selected=true;},
     showModal(){this.open=true;},close(){this.open=false;},getBoundingClientRect(){return {width:920};}});
   const ids=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],element()]));
   ids.set('meta[name="theme-color"]',element());
   ids.get('#creation-prompt').value=html.match(/<textarea id="creation-prompt"[^>]*>([\s\S]*?)<\/textarea>/)[1];
-  const context2d=new Proxy({}, {get:(target,key)=>target[key]??(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
+  const fills=[];
+  const context2d=new Proxy({fill(){fills.push(this.fillStyle);}}, {get:(target,key)=>target[key]??(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
   ids.get('#entrance-canvas').getContext=()=>canvas?context2d:null;
-  const document={...element(),hidden:false,body:element(),querySelector:s=>ids.get(s),createElement:element,execCommand:()=>legacyCopy};
+  const document={...element(),hidden:false,body:element(),documentElement:{dataset:{uiTheme:theme}},querySelector:s=>ids.get(s),createElement:element,execCommand:()=>legacyCopy};
   const copied=[];
   const navigator={clipboard:clipboard?{async writeText(text){copied.push(text);}}:{async writeText(){throw new Error('Clipboard unavailable');}}};
   const window=element(),motion={...element(),matches:reduced},compact={...element(),matches:false};
   const location={hash,pathname:'/welcome.html',search:''},pending=new Map();let id=0;
   const sandbox={...sequence,PAINT_STYLES,DEFAULT_PAINT_STYLE,defaults,storageKey,readPreset,catalogue,document,window,location,navigator,
     localStorage:{getItem:()=>preset?JSON.stringify(preset):null},
+    getComputedStyle:()=>({backgroundColor:document.documentElement.dataset.uiTheme==='light'?'rgb(237, 240, 245)':'rgb(22, 25, 31)',getPropertyValue:()=>document.documentElement.dataset.uiTheme==='light'?'#000':'#fff'}),
     matchMedia:query=>query.includes('reduced')?motion:compact,devicePixelRatio:1,
     history:{replaceState(_,__,url){location.hash=url.includes('#')?'#'+url.split('#')[1]:'';}},
     ResizeObserver:class{observe(){}},
     requestAnimationFrame:fn=>{pending.set(++id,fn);return id;},cancelAnimationFrame:id=>pending.delete(id),
   };
   vm.runInNewContext(source,sandbox);
-  return {ids,document,window,motion,location,pending,copied,context2d,
+  return {ids,document,window,motion,location,pending,copied,context2d,fills,
     step(time){const callbacks=[...pending.values()];pending.clear();callbacks.forEach(fn=>fn(time));},
     click(selector){return ids.get(selector).events.click({preventDefault(){}});},
   };
@@ -127,8 +129,23 @@ const palettePage=page({preset:preferred});
 assert.equal(palettePage.ids.get('#stories').style['--resident-gold'],PAINT_STYLES.neon.colors[0]);
 assert(PAINT_STYLES.neon.colors.includes(palettePage.context2d.strokeStyle),'The entrance uses the saved palette');
 preferred.state.shared.coloring=false;palettePage.window.events.storage({key:storageKey});
-assert.equal(palettePage.context2d.strokeStyle,'#bcbcbc','Live studio changes remove entrance colour');
-assert.equal(palettePage.ids.get('#stories').style['--resident-gold'],'#bcbcbc','Empty-state residents also become colourless');
+assert.equal(palettePage.context2d.strokeStyle,'#fff','Uncoloured lines are white on the dark interface');
+assert.equal(palettePage.ids.get('#stories').style['--resident-gold'],'#fff','Empty-state residents use the same uncoloured ink');
+const themePage=page({theme:'light'});
+assert.equal(themePage.context2d.strokeStyle,'#000','Uncoloured lines are black on the light interface');
+assert.equal(themePage.fills[0],'rgb(237, 240, 245)','Polygon interiors match the light background instead of leaving black patches');
+themePage.step(0);themePage.step(2800);
+const pendingFrames=themePage.pending.size;
+themePage.document.documentElement.dataset.uiTheme='dark';themePage.window.events['flatland-ui-theme-change']();
+assert.equal(themePage.context2d.strokeStyle,'#fff','An in-progress animation repaints when the interface switches');
+assert.equal(themePage.fills.at(-2),'rgb(22, 25, 31)','Polygon interiors update with the background');
+assert.equal(themePage.pending.size,pendingFrames,'Theme changes keep the running animation scheduled');
+themePage.step(ENTRANCE_DURATION);assert.equal(themePage.ids.get('#stories').hidden,false,'Theme changes do not restart the animation');
 preferred.state.shared.coloring=true;preferred.state.shared.paintStyle='custom';preferred.state.shared.customPaint={colors:['#112233','#334455','#556677','#778899','#99aabb']};
 palettePage.window.events.pageshow();assert.equal(palettePage.ids.get('#stories').style['--resident-blue'],'#334455');
-console.log('Welcome palette: saved scheme, live colourless mode, custom palette and page restore passed.');
+for(const theme of ['light','dark']){
+  palettePage.document.documentElement.dataset.uiTheme=theme;palettePage.window.events['flatland-ui-theme-change']();
+  assert(PAINT_STYLES.custom.colors.includes(palettePage.context2d.strokeStyle),'A theme switch preserves the original custom palette');
+  assert.equal(palettePage.ids.get('#stories').style['--resident-blue'],'#334455');
+}
+console.log('Welcome palette: saved/custom colours, black/white theme ink, matching polygon fills, live theme changes without restarting, and page restore passed.');

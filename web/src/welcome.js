@@ -8,11 +8,14 @@ const entrance=document.querySelector('#entrance'),stories=document.querySelecto
 const canvas=document.querySelector('#entrance-canvas'),ctx=canvas.getContext('2d');
 const replay=document.querySelector('#replay-entrance');
 const motion=matchMedia('(prefers-reduced-motion: reduce)'),compact=matchMedia('(max-width: 640px)');
-let colors=PAINT_STYLES[defaults.shared.paintStyle].colors;
+let colors=PAINT_STYLES[defaults.shared.paintStyle].colors,background;
 function refreshPaint(){
+  const appearance=getComputedStyle(entrance);
+  background=appearance.backgroundColor;
   let shared=defaults.shared;
   try{const saved=localStorage.getItem(storageKey);if(saved)shared=readPreset(JSON.parse(saved)).shared;}catch{}
-  colors=shared.coloring?PAINT_STYLES[shared.paintStyle].colors:['#bcbcbc'];
+  colors=shared.coloring?PAINT_STYLES[shared.paintStyle].colors:[appearance.getPropertyValue('--entrance-ink').trim()];
+  document.querySelector('meta[name="theme-color"]').content=background;
   for(const [name,index] of [['blue',1],['gold',0],['pink',4]])stories.style.setProperty(`--resident-${name}`,colors[index%colors.length]);
 }
 let sequence=createEntranceStrokes(compact.matches),elapsed=0,lastFrame=null,frame=0,active=false,pageAway=false;
@@ -99,7 +102,7 @@ function draw(time){
       const angle=side*2*Math.PI/stroke.sides,x=Math.cos(angle)*radius,y=Math.sin(angle)*radius;
       if(side===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
     }
-    ctx.closePath();ctx.fillStyle='#000';ctx.globalAlpha=1;ctx.fill();
+    ctx.closePath();ctx.fillStyle=background;ctx.globalAlpha=1;ctx.fill();
     ctx.globalAlpha=settled?.78:time<stroke.start?.38:1;ctx.strokeStyle=colors[stroke.id%colors.length];ctx.lineWidth=1.4;ctx.stroke();
     // A small head mark makes the travelling polygon's direction legible.
     ctx.beginPath();ctx.arc(radius,0,1.25,0,Math.PI*2);ctx.fillStyle=ctx.strokeStyle;ctx.fill();ctx.restore();
@@ -121,7 +124,7 @@ function tick(now){
 function showStories({focus=false,hash=true}={}){
   active=false;pause();entrance.hidden=true;entrance.inert=true;stories.hidden=false;stories.inert=false;
   document.body.classList.remove('is-entering');
-  document.querySelector('meta[name="theme-color"]').content='#000000';
+  document.querySelector('meta[name="theme-color"]').content=background;
   if(hash&&location.hash!=='#stories')history.replaceState(null,'','#stories');
   if(focus)document.querySelector('#stories-title').focus({preventScroll:true});
 }
@@ -131,7 +134,7 @@ function startEntrance(){
   pause();elapsed=0;active=true;pageAway=false;
   history.replaceState(null,'',location.pathname+location.search);
   entrance.hidden=false;entrance.inert=false;stories.hidden=true;stories.inert=true;
-  document.body.classList.add('is-entering');document.querySelector('meta[name="theme-color"]').content='#000000';
+  document.body.classList.add('is-entering');document.querySelector('meta[name="theme-color"]').content=background;
   resize();document.querySelector('#skip-entrance').focus({preventScroll:true});schedule();
 }
 
@@ -150,6 +153,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();els
 window.addEventListener('pagehide',()=>{pageAway=true;pause();});
 window.addEventListener('pageshow',()=>{pageAway=false;refreshPaint();draw(elapsed);schedule();});
 window.addEventListener('storage',event=>{if(event.key===storageKey||event.key===null){refreshPaint();draw(elapsed);}});
+window.addEventListener('flatland-ui-theme-change',()=>{refreshPaint();draw(elapsed);});
 new ResizeObserver(()=>{if(active)resize();}).observe(canvas);
 compact.addEventListener('change',()=>{if(active)resize();});
 refreshPaint();updateMotion();

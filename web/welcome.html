@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,7 @@
   <meta name="description" content="浏览平面国故事，使用 Agent 创作，并在场景工作台确认效果。">
   <title>平面国 · FLATLAND</title>
   <link rel="stylesheet" href="./src/welcome.css">
+  <script type="module" src="./src/ui-appearance.js"></script>
 </head>
 <body>
   <section id="entrance" class="entrance" aria-labelledby="entrance-title" hidden>
@@ -27,6 +28,7 @@
         <span>平面国<small>FLATLAND</small></span>
       </a>
       <nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories" aria-current="page">故事</a><a href="./studio.html">场景工作台</a></nav>
+      <div class="app-header-actions"><label class="theme-toggle" title="切换界面主题"><input class="theme-switch" data-ui-theme-toggle type="checkbox" role="switch" aria-label="夜间模式" checked><span class="theme-symbols" aria-hidden="true"><img class="theme-sun" src="./icons/sun.svg" alt=""><img class="theme-moon" src="./icons/moon.svg" alt=""></span></label></div>
     </header>
     <main>
       <section class="story-intro" aria-labelledby="stories-title">
