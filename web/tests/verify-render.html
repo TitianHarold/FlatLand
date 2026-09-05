@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><title>摄影棚渲染检查</title>
+<style>body{font:14px system-ui;margin:24px}iframe{width:900px;max-width:100%;height:420px;border:1px solid #ccc}pre{white-space:pre-wrap;line-height:1.8;max-height:150px;overflow:auto}</style>
+<h1>摄影棚渲染检查</h1><pre id="result" role="status">正在运行…</pre>
+<iframe id="frame" src="../world.html?studio=1" title="渲染验证场景"></iframe>
+<script type="module">
+import {createSimulation} from '../src/world.js';
+import {createSight,observerFor} from '../src/sight.js';
+import {OPTICS_RULES} from '../src/optics.js';
+import * as THREE from 'three';
+import {createScatter} from '../src/scatter.js';
+const frame=document.querySelector('iframe'),output=document.querySelector('pre'),checks=[];
+const assert=(condition,message)=>{if(!condition)throw new Error(message);checks.push(`PASS · ${message}`);output.textContent=checks.join('\n');};
+const nextFrame=()=>new Promise(resolve=>frame.contentWindow.requestAnimationFrame(resolve));
+async function until(condition){
+  const start=performance.now();
+  while(!condition()){if(performance.now()-start>8000)throw new Error(`等待场景超时：${condition}`);await nextFrame();}
+}
+async function readRow(fraction,inset=false){
+  // Read in the same animation frame as the renderer, before compositing can
+  // clear the default WebGL buffer. No preserved buffer or second draw needed.
+  return new Promise(resolve=>frame.contentWindow.requestAnimationFrame(()=>{
+    const canvas=frame.contentDocument.querySelector('#scene canvas'),gl=canvas.getContext('webgl2');
+    const scene=frame.contentDocument.getElementById(inset?'sight-preview-window':'scene').getBoundingClientRect(),shown=canvas.getBoundingClientRect();
+    const ratio=canvas.width/shown.width,count=inset?Math.floor(Math.floor(scene.width)*ratio):canvas.width;
+    const pixels=new Uint8Array(count*4),x=inset?Math.floor(Math.floor(scene.left)*ratio):0;
+    const y=scene.top+scene.height*(1-fraction);
+    if(y<shown.top||y>=shown.bottom){for(let i=3;i<pixels.length;i+=4)pixels[i]=255;}
+    else gl.readPixels(x,Math.min(canvas.height-1,Math.floor((shown.bottom-y)/shown.height*canvas.height)),count,1,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+    resolve(pixels);
+  }));
+}
+function assertSightMatch(actual,expected,label){
+  const count=actual.length/4;let interiors=0,matches=0;
+  for(let x=3;x<count-3;x++){
+    if(![0,1,2].every(c=>[-3,-2,-1,1,2,3].every(dx=>Math.abs(expected[(x+dx)*4+c]-expected[x*4+c])<2)))continue;
+    interiors++;
+    if([0,1,2].every(c=>Math.abs(actual[x*4+c]-expected[x*4+c])<=2))matches++;
+  }
+  assert(interiors>count*.8&&matches/interiors>.99,`${label}：真实 GPU 投影与独立可见边积分一致（${matches}/${interiors}）`);
+}
+function verifyScatterKernel(){
+  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(512,128);renderer.autoClear=false;
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(60,4,.002,20000);
+  camera.position.set(0,0,20);camera.lookAt(0,0,0);
+  const geometry=new THREE.PlaneGeometry(.5,3),white=new THREE.MeshBasicMaterial({color:0xffffff});
+  for(const x of [1,20]){const mesh=new THREE.Mesh(geometry,white);mesh.position.set(x,0,.032);scene.add(mesh);}
+  const flatWindow={value:new THREE.Vector2()},eye={value:new THREE.Vector2()},viewportOrigin={value:new THREE.Vector2()};
+  const scatter=createScatter(renderer,{flatWindow,eye,viewportOrigin,planeHeight:.032});
+  const pixels=()=>{const gl=renderer.getContext(),row=new Uint8Array(512*4);gl.readPixels(0,64,512,1,gl.RGBA,gl.UNSIGNED_BYTE,row);return row;};
+  renderer.clear();renderer.render(scene,camera);const sharp=pixels();
+  const near=new THREE.Vector3(1,0,.032).project(camera),far=new THREE.Vector3(20,0,.032).project(camera);
+  const nx=Math.round((near.x*.5+.5)*512),fx=Math.round((far.x*.5+.5)*512);
+  scatter.render(scene,camera,{width:512,height:128},30,1);const blurred=pixels();
+  const sample=(row,x)=>row[x*4],around=(row,x)=>Array.from({length:19},(_,i)=>sample(row,x+i-9));
+  assert(around(sharp,nx).every((v,i)=>Math.abs(v-around(blurred,nx)[i])<=2),'散射中心的近处轮廓保持清晰，不向两侧发虚');
+  assert(Math.max(...around(blurred,fx))<Math.max(...around(sharp,fx))*.8&&around(blurred,fx).filter(v=>v>3).length>around(sharp,fx).filter(v=>v>3).length,'同样大小的远处轮廓确实向周围平均，亮峰降低且范围变宽');
+  renderer.setSize(640,160);camera.aspect=4;camera.updateProjectionMatrix();
+  scatter.render(scene,camera,{width:640,height:160},30,1);
+  assert(renderer.getContext().getError()===0,'散射纹理随窗口尺寸更新，GPU 无错误');
+  scatter.clear();geometry.dispose();white.dispose();renderer.dispose();renderer.forceContextLoss();
+}
+window.addEventListener('message',async function ready(event){
+  if(event.source!==frame.contentWindow||event.origin!==location.origin||event.data?.type!=='flatland-studio-ready')return;
+  window.removeEventListener('message',ready);
+  try{
+    verifyScatterKernel();
+    const api=frame.contentWindow.flatlandStudio;
+    api.set('wandering',false);
+    await until(()=>api.snapshot().renderCalls>1);
+    const {cameraFov,cameraAspect}=api.snapshot();
+    assert(api.snapshot().observerVisible,'完全俯视时保留观察者');
+    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05&&api.snapshot().stretch===0,'实体基础高度固定为 0.05 身长');
+    assert(!frame.contentDocument.getElementById('shape-height'),'独立场景也去掉基础高度调节');
+    assert(api.snapshot().renderPoints===0,'没有粒子渲染');
+    const preview=frame.contentDocument.getElementById('sight-preview'),minimap=frame.contentDocument.getElementById('minimap-panel');
+    assert(!preview.hidden&&minimap.hidden&&frame.contentDocument.querySelectorAll('#scene canvas').length===1,'俯视显示居民视野预览，复用同一 WebGL 画布');
+    const reference=await createSimulation({wandering:false}),sight=createSight(reference),overviewLight=api.snapshot().optics;
+    api.set('contour',false);api.configure({attenuationDistance:0,fog:0});
+    for(const projection of ['perspective','equidistant']){
+      api.set('projection',projection);await nextFrame();
+      const actual=await readRow(.5,true);
+      const expected=sight(actual.length/4,{...OPTICS_RULES,coloring:true,contour:0,finish:'clear',glow:false,fog:0,attenuationDistance:0},observerFor(reference.player,120*Math.PI/180,projection));
+      assertSightMatch(actual,expected,`${projection} / 俯视小窗`);
+    }
+    api.configure({attenuationMode:'mask',attenuationDistance:.1});await nextFrame();
+    assert((await readRow(.5,true)).every((v,i)=>i%4===3?v===255:v===0),'小窗沿用真实遮罩，并排除观察者自身与俯视辅助线');
+    api.set('projection','perspective');api.set('contour',true);api.configure(overviewLight);await nextFrame();
+    api.set('perspective',50);
+    await until(()=>Math.abs(api.snapshot().cameraProgress-.5)<.001);
+    assert(!api.snapshot().observerVisible,'下降时不绘制观察者自身');
+    assert(preview.hidden,'下降时关闭俯视小窗');
+    assert(api.snapshot().renderedView==='world','下降途中只绘制世界，不提前叠加居民全屏');
+    assert(api.snapshot().cameraFov===cameraFov&&api.snapshot().cameraAspect===cameraAspect,'下降途中保持同一透视镜头，不拉伸画面');
+    api.click('resident');
+    await until(()=>api.snapshot().cameraProgress===1);
+    assert(api.snapshot().renderedView==='world'&&api.snapshot().renderTriangles>2,'居民视角继续绘制世界几何，不切换到独立光学画面');
+    assert(!api.snapshot().observerVisible,'居民视角不绘制观察者自身');
+    assert(preview.hidden&&!minimap.hidden,'居民视角切回位置地图，不叠加视野小窗');
+    assert(api.snapshot().cameraFov===cameraFov&&api.snapshot().cameraAspect===cameraAspect,'下降到底保持同一透视镜头，不在末段拉伸');
+    assert(api.snapshot().lineOnly&&api.snapshot().stretch===0,'下降终点自然停留在一维，没有自动拉伸');
+    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05,'下降只移动相机，形状保持设定的基础高度');
+    const residentCanvas=frame.contentDocument.querySelector('#scene canvas');
+    assert(api.snapshot().windowBlend<1,'镜头先到 0°，窗口随后展开');
+    await until(()=>api.snapshot().windowBlend===1);
+    assert(api.snapshot().windowHeight===8&&residentCanvas.height>1,'同一 3D 几何连续展开到默认 8% 窗口，缓冲区不切换');
+    api.set('projection','equidistant');api.set('field-angle',160);
+    const gl=residentCanvas.getContext('webgl2'),outside=new Uint8Array(residentCanvas.width*4);
+    let escaped=false,rotation=0,lastAngle=api.snapshot().observer.angle;api.key('KeyD',true);
+    for(let i=0;i<900&&!escaped&&rotation<Math.PI*2;i++){
+      await nextFrame();
+      const angle=api.snapshot().observer.angle,delta=angle-lastAngle;
+      rotation+=Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)));lastAngle=angle;
+      for(const y of [.3,.43,.57,.7]){
+        gl.readPixels(0,Math.floor(residentCanvas.height*y),residentCanvas.width,1,gl.RGBA,gl.UNSIGNED_BYTE,outside);
+        if(outside.some((v,index)=>index%4!==3&&v>2)){escaped=true;break;}
+      }
+    }
+    api.key('KeyD',false);
+    assert(!escaped&&rotation>=Math.PI*2,'矫正镜头旋转一周，墙顶不会在一维窗口外生成斜线或三角形');
+    api.click('reset');api.set('projection','perspective');api.set('field-angle',120);await nextFrame();
+    api.click('sight-line');
+    for(const row of [.02,.1,.9,.98]){
+      const pixels=await readRow(row);
+      assert(pixels.every((v,i)=>i%4===3?v===255:v===0),`${row} 高度：自然空白方向为不透明纯黑`);
+    }
+    api.set('resident-window',20);await until(()=>api.snapshot().windowHeight===20);
+    assert(api.snapshot().windowBlend===1,'一维窗口可调为视口高度的 20%');
+    const windowCenter=await readRow(.5);
+    for(const y of [.45,.55])assert((await readRow(y)).every((v,i)=>v===windowCenter[i]),'可见窗口内各高度保持同一维颜色');
+    assert((await readRow(.3)).every((v,i)=>i%4===3?v===255:v===0),'一维窗口外仍是纯黑');
+    api.set('resident-window',8);await until(()=>api.snapshot().windowHeight===8);
+    const center=await readRow(.5);
+    assert(center.some((v,i)=>i%4!==3&&v>0),'中央 3D 薄片仍然可见');
+    assert(!frame.contentDocument.getElementById('sight-band'),'删除屏幕彩带厚度控制');
+    const originalLight=api.snapshot().optics,originalRow=await readRow(.5);
+    api.configure({residentEmission:2**-16,houseEmission:2**-16,exposure:12});await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>i%4===3||v<=1),'最低增益的实际画面接近全黑，RGB 不超过 1');
+    api.configure(originalLight);await nextFrame();
+    api.configure({wallColor:'#ff0000',customPaint:{colors:Array(5).fill('#ff0000')}});
+    api.set('paint-style','custom');await nextFrame();
+    const customRow=await readRow(.5);
+    assert(customRow.some((v,i)=>i%4===0&&v>20)&&customRow.every((v,i)=>i%4===0||i%4===3||v===0),'自定义红色真正进入 3D 居民与建筑像素');
+    api.configure({wallColor:'#928C99'});api.set('paint-style','dufy');await nextFrame();
+    for(const [key,other] of [['residentEmission','houseEmission'],['houseEmission','residentEmission']]){
+      api.configure({[key]:.02});await nextFrame();
+      const row=await readRow(.5),optics=api.snapshot().optics;
+      assert(row.some((value,i)=>i%4!==3&&value!==originalRow[i]),`${key}：分类明暗确实改变渲染像素`);
+      assert(optics[other]===originalLight[other]&&optics.exposure===originalLight.exposure&&optics.fog===originalLight.fog,`${key}：不修改另一类或全局参数`);
+      api.configure({[key]:originalLight[key]});await nextFrame();
+    }
+    for(const attenuationMode of ['brightness','wash','mask']){
+      api.configure({attenuationMode,attenuationCurve:'smooth'});await nextFrame();
+      const baseline=await readRow(.5);
+      for(const attenuationCurve of ['linear','exponential','quadratic']){
+        api.configure({attenuationCurve});await nextFrame();
+        const row=await readRow(.5);
+        assert(row.some((v,i)=>i%4!==3&&v!==baseline[i]),`${attenuationMode} / ${attenuationCurve}：曲线实际改变同一 3D 场景的像素`);
+      }
+    }
+    api.configure({attenuationMode:'mask',attenuationDistance:.1});await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>i%4===3?v===255:v===0),'最远可见距离外的 3D 物体全黑，纹理插值不漏光');
+    api.configure({attenuationDistance:0});await nextFrame();
+    assert((await readRow(.5)).some((v,i)=>i%4!==3&&v>0),'关闭遮罩后恢复真实场景颜色');
+    api.configure(originalLight);await nextFrame();
+    const planar=await readRow(.5);
+    api.set('projection','equidistant');await nextFrame();
+    const curved=await readRow(.5);
+    assert(curved.some((v,i)=>i%4===0&&Math.max(v,curved[i+1],curved[i+2])-Math.min(v,curved[i+1],curved[i+2])>25),'曲面接收保留可见居民，墙不会错误遮住整幅视野');
+    assert(curved.some((v,i)=>i%4!==3&&v!==planar[i]),'曲面等角实际改变横向接收，与平面透视不同');
+    // Compare the GPU's receiving geometry and occlusion against the independent
+    // interval integrator, excluding only antialiased colour boundaries.
+    api.set('contour',false);api.configure({attenuationDistance:0,fog:0});
+    for(const projection of ['perspective','equidistant'])for(const fov of [60,120,160]){
+      api.set('projection',projection);api.set('field-angle',fov);await nextFrame();
+      const actual=await readRow(.5),count=actual.length/4;
+      const expected=sight(count,{...OPTICS_RULES,coloring:true,contour:0,finish:'clear',glow:false,fog:0,attenuationDistance:0},observerFor(reference.player,fov*Math.PI/180,projection));
+      assertSightMatch(actual,expected,`${projection} / ${fov}°`);
+    }
+    reference.dispose();api.set('field-angle',120);api.set('contour',true);api.configure(originalLight);
+    api.set('projection','perspective');await nextFrame();
+    api.set('coloring',false);await nextFrame();
+    assert(api.snapshot().optics.displayEnhancement,'关闭染色自动启用真实几何深度的显示增强');
+    const gray=await readRow(.5),levels=[];
+    for(let i=0;i<gray.length;i+=4){if(gray[i])levels.push(gray[i]);if(gray[i]!==gray[i+1]||gray[i]!==gray[i+2])throw new Error('无染色不能残留色相');}
+    assert(new Set(levels).size>3,'无染色保持灰度层次，不是统一白线');
+    for(const coloring of [false,true])for(const [material,other] of [['residentEmission','houseEmission'],['houseEmission','residentEmission']]){
+      api.set('coloring',coloring);
+      api.configure({[material]:1,[other]:0,attenuationMode:'mask',attenuationDistance:3000,detailGain:1});await nextFrame();
+      const low=await readRow(.5);api.configure({detailGain:8});await nextFrame();const high=await readRow(.5);
+      assert(high.some((v,i)=>i%4!==3&&low[i]-v>10),`${coloring?'染色':'灰度'} / ${material}：大视野下区分度增益增强实际几何明暗`);
+      assert(high.every((v,i)=>i%4===3||low[i]!==0||v===0),`${material}：增强不泄漏被遮挡或原本无光的位置`);
+      if(coloring){
+        let colored=0;
+        for(let i=0;i<low.length;i+=4){
+          const a=Math.max(...low.subarray(i,i+3)),b=Math.max(...high.subarray(i,i+3));
+          if(b<20||a-Math.min(...low.subarray(i,i+3))<5)continue;
+          colored++;
+          if(![0,1,2].every(c=>Math.abs(low[i+c]/a-high[i+c]/b)<.06))throw new Error('区分度增益改变了配色色相');
+        }
+        assert(colored>10,`${material}：增强后仍保留实际染色色相`);
+      }
+    }
+    api.set('coloring',false);api.configure(originalLight);await nextFrame();
+    const geometricGray=await readRow(.5);
+    api.set('paint-style','grayscale');await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>v===geometricGray[i]),'无染色的几何增强与头白尾灰配色互不影响');
+    api.set('coloring',true);await nextFrame();
+    assert((await readRow(.5)).some((v,i)=>i%4!==3&&v!==geometricGray[i]),'开启头白尾灰配色使用固定身体染色，与几何明暗不同');
+    api.set('paint-style','dufy');await nextFrame();
+    assert(api.snapshot().optics.displayEnhancement,'恢复染色后区分度增益继续生效');
+    for(const coloring of [false,true])for(const detailStyle of ['sharp','soft','velvet']){
+      api.set('coloring',coloring);api.configure({detailGain:0,detailStyle});api.set('contour',true);await nextFrame();
+      const disabled=await readRow(.5);api.set('contour',false);await nextFrame();
+      assert((await readRow(.5)).every((v,i)=>v===disabled[i]),`${coloring?'染色':'灰度'}：区分度 0 与完全关闭几何增强的像素一致`);
+    }
+    api.set('coloring',true);api.set('contour',true);api.configure(originalLight);await nextFrame();
+    const styleRows=[];
+    for(const detailStyle of ['sharp','soft','velvet']){
+      api.configure({detailGain:8,detailStyle});await nextFrame();styleRows.push(await readRow(.5));
+    }
+    assert(styleRows.slice(1).every(row=>row.some((v,i)=>i%4!==3&&Math.abs(v-styleRows[0][i])>10)),'柔和与绒面实际改变明暗像素，区别于锐利高光');
+    api.configure(originalLight);await nextFrame();
+    const scatteringRows={};
+    api.set('contour',false);api.configure({attenuationMode:'mask',attenuationDistance:15,fog:0,detailGain:0,scatterAmount:1});
+    const variation=row=>row.reduce((sum,v,i)=>sum+(i>=4&&i%4!==3?Math.abs(v-row[i-4]):0),0);
+    const energy=row=>row.reduce((sum,v,i)=>sum+(i%4!==3?v:0),0);
+    for(const visionEffect of ['attenuation','scatter','both']){
+      api.configure({visionEffect});await nextFrame();scatteringRows[visionEffect]=await readRow(.5);
+    }
+    assert(variation(scatteringRows.both)<variation(scatteringRows.attenuation),'散射实际平均相邻颜色，减小边缘突变');
+    assert(energy(scatteringRows.scatter)>energy(scatteringRows.both)*1.1,'单独散射保留亮度，组合模式同时衰减光线');
+    assert((await readRow(.8)).every((v,i)=>i%4===3?v===255:v===0),'散射不会把颜色漏到一维窗口之外');
+    api.configure({visionEffect:'both',scatterAmount:0});await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>v===scatteringRows.attenuation[i]),'散射 0 完全旁路后处理，恢复原始衰减像素');
+    api.configure({visionEffect:'scatter',scatterAmount:1,attenuationDistance:.1});await nextFrame();
+    assert((await readRow(.5)).every((v,i)=>i%4===3?v===255:v===0),'散射也不会显示视野范围以外的物体');
+    api.configure({attenuationDistance:15,visionEffect:'scatter'});await nextFrame();
+    const scatteredLine=await readRow(.5);api.click('sight-expanded');await until(()=>api.snapshot().stretch===1);
+    assert((await readRow(.05)).every((v,i)=>Math.abs(v-scatteredLine[i])<=1),'拉满后的散射沿用同一细线，不随上下高度变化');
+    api.click('sight-expanded');await until(()=>api.snapshot().stretch===0);
+    const lock=frame.contentDocument.getElementById('map-lock');
+    assert(lock?.getAttribute('role')==='switch'&&!frame.contentDocument.querySelector('#map-north,#map-follow,#minimap-count,#map-range'),'小地图用一个开关替代大按钮，删除重复标题和人数');
+    lock.click();assert(!api.snapshot().mapLocked&&frame.contentDocument.getElementById('map-lock-label').textContent==='朝向跟随','解锁小地图后跟随角色朝向');
+    lock.click();assert(api.snapshot().mapLocked,'锁定小地图后恢复北向固定');
+    api.set('contour',true);api.configure(originalLight);await nextFrame();
+    const baselineRow=await readRow(.5);
+    api.click('sight-expanded');
+    await until(()=>api.snapshot().stretch>0);
+    assert(api.snapshot().stretch<1,'上下拉满经过动画中间状态');
+    await until(()=>api.snapshot().stretch===1);await nextFrame();
+    assert(api.snapshot().geometryHeight===.05&&api.snapshot().wallHeight===.05,'拉满不再加高实体或墙，不产生透视柱体');
+    assert(api.snapshot().windowHeight===100&&residentCanvas.height>1,'同一 3D 几何上下铺满黑色视口');
+    for(const y of [.02,.1,.5,.9,.98])assert((await readRow(y)).every((v,i)=>v===baselineRow[i]),`${y} 高度的颜色与中央细线完全一致`);
+    assert(api.snapshot().renderPoints===0,'拉满也不生成粒子');
+    frame.style.height='560px';
+    await until(()=>Math.abs(residentCanvas.getBoundingClientRect().height-560)<1);
+    assert(api.snapshot().windowHeight===100&&residentCanvas.height>1,'窗口变高自动填满，仍用原渲染缓冲区');
+    frame.style.height='320px';
+    await until(()=>Math.abs(residentCanvas.getBoundingClientRect().height-320)<1);
+    assert(api.snapshot().windowHeight===100,'窗口变矮自动填满，无手动幅度');
+    assert(api.snapshot().geometryHeight===.05&&residentCanvas.getBoundingClientRect().height===320,'填满和改变窗口尺寸均不改变基础高度');
+    api.click('sight-expanded');await until(()=>api.snapshot().stretch===0);await nextFrame();
+    assert(api.snapshot().windowHeight===8,'收回恢复用户的一维窗口');
+    api.click('sight-expanded');await until(()=>api.snapshot().stretch===1);
+    api.set('resident-window',30);await until(()=>api.snapshot().windowHeight===30);
+    assert(api.snapshot().windowHeight===30,'填满时调节窗口会收回到所设高度');
+    api.set('resident-window',8);frame.style.height='420px';
+    api.click('sight-expanded');await until(()=>api.snapshot().stretch>.1);
+    api.click('overview');await nextFrame();
+    assert(api.snapshot().cameraProgress===1,'切回俯视先关闭一维窗口，再旋转镜头');
+    api.click('overview');await until(()=>api.snapshot().cameraProgress===0);
+    assert(api.snapshot().observerVisible&&api.snapshot().renderCalls>1,'返回俯视恢复世界与观察者');
+    assert(!preview.hidden&&minimap.hidden,'返回俯视恢复居民视野小窗');
+    api.configure({attenuationMode:'mask',attenuationDistance:8});await nextFrame();
+    let guide=api.snapshot().rangeGuide;
+    assert(guide.visible&&guide.radius===8&&Math.abs(guide.rayLength-8)<1e-5,'虚线圆与视角边线共用遮罩半径');
+    assert(!frame.contentDocument.getElementById('scale-bar').hidden&&frame.contentDocument.getElementById('scale-bar').textContent.includes('身长'),'俯视比例尺使用统一身长');
+    const canvas=frame.contentDocument.getElementById('scene'),rect=canvas.getBoundingClientRect();
+    const click=(type,detail,x,y)=>canvas.dispatchEvent(new frame.contentWindow.MouseEvent(type,{bubbles:true,detail,clientX:rect.left+rect.width*x,clientY:rect.top+rect.height*y}));
+    const beforeTurn=api.snapshot().observer;
+    const beforePreview=await readRow(.5,true);
+    click('click',1,.9,.8);
+    await until(()=>Math.abs(api.snapshot().observer.angle-beforeTurn.angle)>.1);
+    assert(Math.hypot(api.snapshot().observer.x-beforeTurn.x,api.snapshot().observer.y-beforeTurn.y)<.001,'单击只转朝向，不移动观察者');
+    assert((await readRow(.5,true)).some((v,i)=>i%4!==3&&v!==beforePreview[i]),'俯视小窗实时跟随观察者转向');
+    api.click('reset');await nextFrame();
+    const beforeMove=api.snapshot().observer;
+    click('click',1,.1,.85);click('click',2,.1,.85);click('dblclick',2,.1,.85);
+    const clickedAt=performance.now();await until(()=>performance.now()-clickedAt>700);
+    const afterMove=api.snapshot().observer;
+    assert(Math.hypot(afterMove.x-beforeMove.x,afterMove.y-beforeMove.y)>1,'双击黑色空白移动观察者');
+    assert(Math.abs(afterMove.angle-beforeMove.angle)<.001,'双击取消待处理的单击，不额外转朝向');
+    guide=api.snapshot().rangeGuide;
+    assert(guide.x===afterMove.x&&guide.y===afterMove.y,'移动观察者时虚线圆跟随圆心');
+    api.set('show-range',false);await nextFrame();
+    assert(!api.snapshot().rangeGuide.visible&&api.snapshot().optics.attenuationDistance===8,'关闭辅助圆不改变真正的视野范围');
+    api.set('show-range',true);api.set('perspective',50);await until(()=>api.snapshot().cameraProgress===.5);
+    assert(!api.snapshot().rangeGuide.visible,'下降视角隐藏辅助圆，不进入居民成像');
+    await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='../studio.html?scene=house';});
+    let panel=frame.contentDocument;
+    await until(()=>panel.querySelector('#control-shared-houseEmission')?.disabled===false);
+    panel.getElementById('restore').click();
+    await until(()=>panel.querySelector('#control-shared-houseEmission')?.disabled===false);
+    const optics=()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().optics;
+    const input=(id,value,type='input')=>{const el=panel.getElementById(id);if(el.classList.contains('choice-buttons')){el.querySelector(`button[value="${value}"]`).click();return;}el.value=value;el.dispatchEvent(new frame.contentWindow.Event(type,{bubbles:true}));};
+    input('control-view-windowHeight','20');await nextFrame();
+    const view=panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
+    assert(panel.querySelector('#control-view-projection').textContent==='画面未矫正画面矫正','镜头名称对应直线接收未矫正、等角展开已矫正');
+    assert(view.shapeHeight===.05&&view.stretch===0&&!panel.getElementById('control-view-shapeHeight'),'工作台固定 0.05 身长，并删除基础高度滑条');
+    assert(!panel.querySelector('#control-shared-finish,#control-shared-contour,#control-view-stretchHeight,#control-view-stretchStyle,#control-view-particleDensity'),'移除成像、辨形、拉伸幅度、特效和粒子设置');
+    assert([...panel.querySelectorAll('.config-panel h2')].map(el=>el.textContent).join('/')==='发光方式/视野/镜头/行为','四个面板各司其职');
+    assert(panel.querySelectorAll('.paint-grid input[type=color]').length===6&&!/头部|中段|尾部/.test(panel.querySelector('.paint-grid').textContent),'五枚主题色与独立建筑颜色，删除渐变分组');
+    assert([...panel.querySelectorAll('#inspector-content select')].every(select=>select.options.length>2)&&panel.querySelectorAll('.choice-buttons').length===6,'所有二选一下拉菜单改为并排按钮');
+    assert(!panel.getElementById('control-shared-fog')&&optics().fog===0,'统一工作台只有一套距离效果，没有隐藏的空气吸光');
+    assert(!panel.querySelector('[data-light-scope]'),'角色与建筑直接调节，不再切换全局或类别页');
+    assert(!/dB|参考亮度/.test(panel.querySelector('#palette-title').closest('section').textContent),'增益面板去掉单位和参考说明');
+    assert(!panel.querySelector('.workspace-heading')&&panel.querySelectorAll('.scene-card .scene-thumb').length===4,'删除重复场景标题，四个场景保留缩略图');
+    assert(panel.getElementById('control-behavior-population').closest('[aria-labelledby=behavior-title]')&&panel.getElementById('control-shared-paintStyle').closest('section').getAttribute('aria-labelledby')==='palette-title','居民行为归入行为面板，颜色仍在发光方式面板');
+    input('control-behavior-population','100','change');
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().population===100,'移动后的居民数量控件仍驱动实际世界');
+    input('control-behavior-population','14','change');
+    input('control-behavior-wandering','false','change');
+    assert(!panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().wandering,'移动后的自由移动开关仍生效');
+    input('control-behavior-wandering','true','change');
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().wandering,'行为面板可以恢复自由移动');
+    input('control-behavior-wandering','false','change');
+    input('control-behavior-interaction','touch','change');
+    input('control-behavior-population','0','change');
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().interaction==='touch','移动后的接触方式仍生效');
+    input('control-shared-paintStyle','grayscale','change');
+    assert(panel.querySelectorAll('.paint-grid input[type=color]').length===4&&panel.querySelector('.paint-grid').textContent.includes('头部'),'头白尾灰是独立配色方案，明确显示三处用途');
+    input('control-shared-paintStyle','dufy','change');
+    const paintToggle=panel.getElementById('control-shared-coloring'),detailSlider=panel.getElementById('control-shared-detailGain');
+    assert(!detailSlider.disabled&&detailSlider.value==='1'&&optics().displayEnhancement,'默认区分度增益 +1，与显示染色同时启用');
+    paintToggle.checked=false;paintToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(!detailSlider.disabled&&optics().displayEnhancement,'关闭染色自动启用区分度增益');
+    assert(detailSlider.min==='0'&&detailSlider.max==='3','区分度只保留 0 到 +3，无负值');
+    input('control-shared-detailGain','0');assert(optics().detailGain===0&&!optics().displayEnhancement,'区分度 0 完全关闭增强');
+    assert(optics().detailStyle==='soft','默认采用柔和增强');
+    for(const style of ['velvet','sharp','soft']){input('control-shared-detailStyle',style,'change');assert(optics().detailStyle===style&&!optics().displayEnhancement,'增强方式可切换，0 档仍关闭');}
+    input('control-shared-detailGain','3');assert(optics().detailGain===8,'区分度增益按整数档翻倍，+3 为八倍对比指数');
+    paintToggle.checked=true;paintToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(!detailSlider.disabled&&optics().displayEnhancement&&optics().detailGain===8,'恢复染色后仍应用已选的区分度增益');
+    const gainSlider=panel.getElementById('control-shared-houseEmission');
+    assert(gainSlider.min==='-16'&&gainSlider.max==='16'&&gainSlider.step==='1','增益扩大到正负 16，中心 0，整数档位');
+    for(const [level,multiplier] of [[-16,2**-16],[-3,.125],[-1,.5],[0,1],[1,2],[3,8],[16,2**16]]){
+      input('control-shared-houseEmission',String(level));
+      const label=level>0?`+${level}`:String(level);
+      assert(optics().houseEmission===multiplier&&optics().residentEmission===1,`增益 ${label} 按倍数变化，只影响建筑`);
+      assert(gainSlider.closest('.control').querySelector('output').textContent===label&&gainSlider.getAttribute('aria-valuetext')===label,'增益只显示带符号的整数档位');
+    }
+    input('control-shared-houseEmission','0');
+    for(const [position,distance] of [[1,2],[2,4],[3,8],[4,16],[13,8192]]){
+      input('control-shared-attenuationDistance',String(position));
+      assert(optics().attenuationDistance===distance&&panel.getElementById('control-shared-attenuationDistance-number').value===String(distance),'距离翻倍对应滑条相同的移动量');
+    }
+    input('control-shared-attenuationDistance-number','3000');
+    assert(optics().attenuationDistance===3000&&Math.abs(panel.getElementById('control-shared-attenuationDistance').valueAsNumber-Math.log2(3000))<1e-5,'非二次幂距离仍可直接输入，并同步对数滑条');
+    for(const curve of ['linear','exponential','quadratic','smooth','inverse-square']){
+      input('control-shared-attenuationCurve',curve,'change');
+      assert(optics().attenuationCurve===curve,`${curve}：面板曲线接入渲染参数`);
+      assert(panel.querySelector('#attenuation-plot polyline').getAttribute('points').length>100,'面板显示当前曲线预览');
+    }
+    input('control-shared-residentEmission','-16');
+    assert(optics().residentEmission===2**-16&&optics().houseEmission===1,'对数滑条最左端接近全黑，另一类数值不变');
+    const distanceToggle=panel.getElementById('control-shared-attenuationEnabled');distanceToggle.checked=false;distanceToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(optics().attenuationDistance===0&&optics().fog===0,'关闭距离变化后没有第二层距离衰减');
+    assert(panel.getElementById('control-shared-attenuationCurve').disabled,'关闭距离变化后曲线选择同步禁用');
+    distanceToggle.checked=true;distanceToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    input('control-shared-attenuationCurve','exponential','change');
+    input('control-shared-residentEmission','0');
+    input('control-shared-attenuationDistance-number','40');
+    assert(!panel.getElementById('control-shared-attenuationStrength'),'视野范围就是衰减到零的终点，没有第二个遮罩强度');
+    panel.querySelector('[data-scene="mask"]').click();
+    await until(()=>panel.getElementById('control-shared-attenuationCurve')?.disabled===false);
+    const mask=panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
+    assert(mask.layout==='mask'&&mask.population===997&&!mask.wandering,'遮罩测试场景使用 996 位静止居民和同一个 3D 渲染器');
+    assert(mask.optics.attenuationDistance===40&&mask.optics.attenuationMode==='mask','视野范围与衰减方式跨场景保持一致');
+    await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().rangeGuide.radius===40);
+    const rangeToggle=panel.getElementById('control-view-showRange');rangeToggle.checked=false;rangeToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    await until(()=>!panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().rangeGuide.visible);
+    assert(optics().attenuationDistance===40,'工作台可以关闭虚线圆，保留遮罩');
+    assert(panel.getElementById('scene-controls').textContent.includes('半径 200 身长 · 直径 400 身长'),'同心圆场景标明完整场景尺度');
+    assert(!panel.querySelector('details,summary,#focus-preview,#runtime-status,#coordinates,#interaction-help,[data-key],[data-action="mask-compare"],[data-mask-radius]'),'去掉折叠入口、重复动作和底部提示条');
+    const overlay=panel.getElementById('scene-controls'),previewBox=panel.getElementById('preview').getBoundingClientRect(),facts=panel.querySelector('.scene-facts').getBoundingClientRect();
+    assert(overlay.closest('.viewport-wrap')&&facts.top>=previewBox.top&&facts.bottom<previewBox.bottom,'场景尺度直接叠在黑色视口里');
+    assert(panel.elementFromPoint(facts.left+5,facts.top+5)?.id==='preview','场景尺度文字不阻挡点击画面');
+    const maskToggle=panel.getElementById('control-shared-attenuationEnabled');
+    maskToggle.checked=false;maskToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(optics().attenuationDistance===0,'同一个遮罩开关即可查看全场');
+    maskToggle.checked=true;maskToggle.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(optics().attenuationDistance===40,'重新开启遮罩保留原范围');
+    panel.querySelector('[data-dimension="100"]').click();
+    await until(()=>!panel.getElementById('expand-shapes').disabled);
+    assert(panel.querySelector('[data-dimension="100"]').getAttribute('aria-pressed')==='true','居民一维按钮切换镜头并同步选中状态');
+    const inner=panel.querySelector('#preview').contentDocument;
+    await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().windowHeight===20&&panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().windowBlend===1);
+    assert(inner.querySelector('#scene canvas').height>1,'工作台窗口接入同一完整 3D 渲染缓冲区');
+    panel.getElementById('expand-shapes').click();
+    await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().stretch===1);
+    assert(panel.getElementById('expand-shapes').textContent==='收回细线','唯一的上下拉满按钮接入同一中央细线');
+    panel.querySelector('[data-dimension="0"]').click();
+    await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().cameraProgress===0);
+    assert(panel.getElementById('control-view-dimension').value==='0'&&panel.querySelector('[data-dimension="0"]').getAttribute('aria-pressed')==='true','俯视按钮恢复镜头、滑条与选中状态');
+    const wallColor=panel.querySelector('[data-paint=wall]');wallColor.value='#123456';wallColor.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(panel.getElementById('control-shared-paintStyle').value==='dufy','修改建筑颜色不改变居民配色方案');
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().paint.wall==='#123456','建筑自定义色进入共用配色');
+    const headColor=panel.querySelector('[data-paint="0"]');headColor.value='#fedcba';headColor.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().paint.colors[0]==='#fedcba','自定义主题色进入共用配色');
+    input('control-shared-houseEmission','2');
+    await until(()=>panel.getElementById('save-status').textContent==='已自动保存');
+    await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='../studio.html';});
+    panel=frame.contentDocument;
+    await until(()=>panel.getElementById('control-shared-attenuationCurve')?.disabled===false);
+    assert(panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().layout==='mask'&&optics().attenuationDistance===40&&optics().houseEmission===4,'重新打开自动恢复场景、对数范围和整数增益');
+
+    assert(panel.getElementById('control-view-windowHeight').value==='20','刷新后自动恢复一维窗口高度');
+    assert(panel.querySelector('[data-paint=wall]').value==='#123456'&&panel.querySelector('[data-paint="0"]').value==='#fedcba','自定义颜色自动保存并恢复');
+    panel.querySelector('[data-scene="stars"]').click();
+    await until(()=>panel.getElementById('control-shared-attenuationCurve')?.disabled===false);
+    const stars=()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot();
+    assert(optics().attenuationCurve==='exponential'&&optics().fog===0,'切换星野沿用同一曲线，没有附加吸光');
+    assert(stars().layout==='stars'&&stars().renderedView==='world'&&stars().population===241,'星野复用同一个 3D 世界，240 位居民和观察者');
+    assert(stars().paint.wall==='#123456'&&stars().paint.colors[0]==='#fedcba','星野继承自定义配色');
+    input('control-shared-attenuationDistance-number','3000');
+    assert(optics().attenuationDistance===3000,'星野可直接设置适合远处居民的遮罩范围');
+    input('control-view-projection','perspective','change');
+    assert(stars().projection==='perspective','摄影棚与镜头的直线透视设置接入星野');
+    input('control-view-projection','equidistant','change');
+    assert(stars().projection==='equidistant','摄影棚与镜头可切回圆弧等角');
+    input('control-view-windowHeight','13');input('control-shared-paintMode','mixed','change');
+    input('control-behavior-population','100','change');input('control-behavior-wandering','true','change');
+    input('control-behavior-interaction','kill','change');
+    input('control-view-fieldAngle','100');
+    panel.querySelector('[data-dimension="100"]').click();
+    await until(()=>stars().windowBlend===1);
+    await until(()=>!panel.getElementById('expand-shapes').disabled);
+    panel.getElementById('expand-shapes').click();await until(()=>stars().stretch===1);
+    input('control-shared-visionEffect','both','change');input('control-shared-scatterAmount','75');
+    panel.querySelector('#preview').contentDocument.getElementById('map-lock').click();
+    input('control-view-windowHeight','14');
+    assert(!stars().mapLocked,'切换小地图朝向后立即调节镜头，也不会恢复旧值');
+    await until(()=>Math.abs(stars().windowHeight-14)<1e-6);
+    panel.getElementById('expand-shapes').click();await until(()=>stars().stretch===1);
+    const fields=()=>[...panel.querySelectorAll('#inspector-content [data-path]')].map(el=>[el.dataset.path,el.type==='checkbox'?el.checked:el.value,el.getAttribute('aria-pressed')]);
+    const sharedFields=JSON.stringify(fields());
+    for(const scene of ['house','parade','mask','stars']){
+      panel.querySelector(`[data-scene="${scene}"]`).click();
+      await until(()=>panel.getElementById('control-view-projection')?.querySelector('button')?.disabled===false);
+      await until(()=>stars().stretch===1);
+      assert(JSON.stringify(fields())===sharedFields,`${scene}：四面板控件与全部参数跨场景一致`);
+      assert(!stars().mapLocked,`${scene}：小地图保持朝向跟随`);
+      assert(optics().visionEffect==='both'&&optics().scatterAmount===.75,`${scene}：散射方式与程度跨场景保持一致`);
+      assert(stars().projection==='equidistant'&&stars().population===100&&stars().wandering&&stars().interaction==='kill',`${scene}：共用参数实际驱动镜头、人数、运动与接触`);
+      assert(stars().paint.colors[0]==='#fedcba'&&stars().paint.wall==='#123456',`${scene}：主题色和建筑色跨场景保留`);
+    }
+    await until(()=>panel.getElementById('save-status').textContent==='已自动保存');
+    await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='../studio.html';});panel=frame.contentDocument;
+    await until(()=>panel.getElementById('control-view-projection')?.querySelector('button')?.disabled===false);
+    await until(()=>panel.querySelector('#preview').contentWindow.flatlandStudio.snapshot().stretch===1);
+    assert(JSON.stringify(fields())===sharedFields&&!stars().mapLocked,'刷新恢复整套通用参数，包括填满状态和小地图朝向');
+    const saved=JSON.parse(localStorage.getItem('flatland-studio-preset-v1'));
+    saved.state.shared.detailGain=-2;localStorage.setItem('flatland-studio-preset-v1',JSON.stringify(saved));
+    await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='../studio.html';});panel=frame.contentDocument;
+    await until(()=>panel.getElementById('control-shared-detailGain')?.disabled===false);
+    assert(panel.getElementById('control-shared-detailGain').value==='0'&&!optics().displayEnhancement&&optics().houseEmission===4,'旧负区分度迁移为关闭，保留其余配置');
+    document.title='PASS · 摄影棚渲染检查';
+  }catch(error){output.textContent+=`\nFAIL · ${error.message}`;document.title='FAIL · 摄影棚渲染检查';console.error(error);}
+});
+</script>
+</html>

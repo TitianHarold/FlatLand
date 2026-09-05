@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f1ea"><title>平面国 · Study 000 · 形状与视野</title></head>
+<body>
+  <main>
+    <header class="study-header">
+      <div><a class="edition" href="./world.html">FLATLAND / STUDY 000</a><h1>形状与视野<span>从多边形，到一维视野。</span></h1></div>
+      <a class="house-link" href="./world.html">Study 001 <span>一座房子 ↗</span></a>
+    </header>
+    <section class="study-intro"><p>颜色也可以成为光。</p><span>以《电之精灵》的明亮色域为参考，观察同一份染色如何进入一维视野。七种形状共用旋转、距离与光照。</span></section>
+    <section class="shared-controls" aria-label="七种图形的同步控制">
+      <div class="control rotation-control"><div class="caption"><label for="rotation">共同旋转</label><output id="rotation-value">24°</output></div><div class="rotation-row"><input id="rotation" type="range" min="0" max="360" step=".1" value="24"><button id="spin" aria-pressed="true">暂停旋转</button></div></div>
+      <div class="control distance-control"><div class="caption"><label for="distance">共同距离</label><output id="distance-value">6.0 身长</output></div><input id="distance" type="range" min="0" max="1000" step="1" value="100"><div class="presets"><button data-distance="6">近处</button><button data-distance="80">远处</button><button data-distance="1000">一个光点</button></div></div>
+      <div class="control"><div class="caption"><label for="emission">整体亮度</label><output id="emission-value">12×</output></div><input id="emission" type="range" min="0" max="60" step="1" value="36"><div class="scale-labels"><span>柔和</span><span>明亮</span></div></div>
+      <div class="control"><div class="caption"><label for="fog">雾的浓度</label><output id="fog-value">极淡</output></div><input id="fog" type="range" min="0" max="100" step="1" value="10"><div class="scale-labels"><span>透明</span><span>浓雾</span></div></div>
+      <div class="control"><div class="caption"><label for="attenuation">衰减距离</label><output id="attenuation-value">10.0 身长</output></div><input id="attenuation" type="range" min="1" max="100" step=".1" value="10"><label class="check"><input id="attenuation-enabled" type="checkbox" checked>启用接收衰减</label></div>
+    </section>
+    <div class="comparison-caption"><label class="finish-control" for="projection">视野<select id="projection" aria-describedby="projection-description"><option value="equidistant" selected>圆弧接收 · 等角展开</option><option value="perspective">直线接收 · 透视投影</option></select></label><label class="finish-control" for="finish">成像<select id="finish"><option value="clear" selected>清透色域 · 杜菲方向</option><option value="matte">哑光</option><option value="original">原始</option></select></label><label class="finish-control" for="attenuation-mode">衰减<select id="attenuation-mode"><option value="wash" selected>色彩浓度</option><option value="brightness">明暗衰减</option></select></label><label class="check"><input id="coloring" type="checkbox" checked>显示染色</label><label class="check"><input id="contour" type="checkbox" checked>辨形增强 · 视觉辅助</label><span>1 身长 = 成年标准体型 · 视野 90°</span></div>
+    <section class="field-study" aria-labelledby="field-title">
+      <div class="field-heading"><div><span class="edition">COLOUR & LIGHT</span><h2 id="field-title">色域、细线与遮挡</h2><p>远处的色板，近处转动的多边形，更近的细线。两行使用完全相同的几何、染色和曝光。</p><label class="check"><input id="field-details" type="checkbox" checked>显示前景细线</label></div><canvas id="field-plan" width="240" height="130" aria-label="色板、多边形、细线与观察者的俯视位置"></canvas></div>
+      <div class="field-label">原始成像 + 明暗衰减 · 同一场景对照</div><canvas id="field-before" aria-label="同一场景的原始成像"></canvas>
+      <div class="field-label">当前成像 · 使用上方设置</div><canvas id="field-view" aria-label="色域与细线的一维彩色视野"></canvas>
+      <p class="field-note">“色彩浓度”让远处趋近暖纸白，“明暗衰减”让远处变暗，共用上方距离参数。实体始终遮挡后方；亮色底来自真实色板。参考 <a href="https://www.mam.paris.fr/en/oeuvre/la-fee-electricite" target="_blank" rel="noreferrer">杜菲《电之精灵》↗</a> 的色域关系，采用艺术规则，没有透明、反射或体积散射。</p>
+    </section>
+    <div class="comparison-caption"><span id="projection-description">圆弧接收 → 按角度展开：每一格对应相同视角。短弧仅示意接收方向。</span><span>所有居民共用同一发光能力</span></div>
+    <section id="comparison" class="comparison" aria-label="三角形至七边形、线段和圆形的旋转与投影对照"></section>
+    <div class="comparison-note"><span id="finish-description">清透色域保留明亮的固有色，用柔和明暗提示距离；这是杜菲方向的艺术成像实验。</span><span>空处纯黑；竖向铺满只重复同一行视野。</span></div>
+    <section class="crowd-section" aria-labelledby="crowd-title">
+      <div class="crowd-heading"><div><span class="edition">DISTANT INHABITANTS</span><h2 id="crowd-title">远处的人群，像一片星野。</h2><p>240 位居民，距离 1,200—3,000 身长。沿用上方光照设置；关闭接收衰减可对照原始光点。</p></div><canvas id="crowd-map" width="160" height="160" aria-label="周围人群分布与观察朝向"></canvas></div>
+      <div class="crowd-controls"><div class="heading-control"><div class="caption"><label for="heading">转头观察</label><output id="heading-value">−26°</output></div><input id="heading" type="range" min="-180" max="180" value="-26" step=".1"></div><div class="presets"><button id="dense">朝向人群</button><button id="sparse">朝向空旷</button></div><label class="check"><input type="checkbox" id="glow" checked>光晕</label><label class="check"><input type="checkbox" id="show-crowd" checked>显示居民</label></div>
+      <canvas id="crowd-view" tabindex="0" role="img" aria-label="远处人群的一维投影，可左右拖动或用方向键转头"></canvas>
+      <div class="crowd-footer"><span id="crowd-status" role="status"></span><span>拖动星野转头 · <kbd>←</kbd> <kbd>→</kbd></span></div>
+    </section>
+    <footer class="study-footer"><span>平面国 / 观察笔记 000</span><span>形状决定宽窄，距离与光决定明暗。</span></footer>
+  </main>
+  <script type="module" src="./src/study.js"></script>
+</body>
+</html>

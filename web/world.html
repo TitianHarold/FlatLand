@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f1ea"><title>平面国 · 一座房子</title></head>
+<body>
+  <main id="app">
+    <div id="scene" tabindex="0" role="application" aria-label="平面国房屋，W S 前进后退，A D 转向，Q E 横移，空格切换视角"></div>
+    <header>
+      <div class="brand"><span class="edition">FLATLAND / STUDY 001</span><h1>平面国<span id="scene-name">一座房子</span></h1></div>
+      <div class="header-actions"><a class="study-link" href="./studio.html">统一调试台 ↗</a><label class="scene-picker">场景<select id="scene-layout" aria-label="场景"><option value="house">房屋</option><option value="parade">色彩检阅场</option></select></label><a class="study-link" href="./study-000.html">Study 000</a><button id="reference">原图对照</button><button id="reset">回到客厅</button></div>
+    </header>
+    <aside class="intro"><span id="scene-subtitle" class="eyebrow">一位正方形的住所</span><p id="view-description">移动观察者，比较世界明暗与眼前的光。</p><div class="legend"><i></i><span>光圈是观察者 · 虚线标记视角</span></div></aside>
+    <div id="labels" aria-hidden="true"></div>
+    <div id="scale-bar" aria-label="世界比例尺" hidden></div>
+    <aside id="sight-preview" class="observation-panel" aria-label="居民视野预览" hidden>
+      <div class="panel-heading">居民视野</div>
+      <div id="sight-preview-window"></div>
+    </aside>
+    <aside id="minimap-panel" class="observation-panel" aria-label="位置小地图" hidden>
+      <canvas id="minimap" width="420" height="420" aria-label="角色位置与朝向，北向固定"></canvas>
+      <label class="map-lock"><span id="map-lock-label">北向固定</span><input id="map-lock" type="checkbox" role="switch" aria-label="锁定小地图北向" title="开启：北向固定；关闭：朝向跟随" checked></label>
+    </aside>
+    <div id="toast" role="status"></div>
+    <div class="scene-meta"><span id="mode-label">俯视 / OVERVIEW</span><span id="coordinates">正在构建平面世界…</span></div>
+    <section class="controls" aria-label="探索控制">
+      <div class="view-control">
+        <div class="view-buttons"><button id="overview" class="selected" aria-pressed="true">俯视世界</button><button id="resident" aria-pressed="false">进入平面国</button></div>
+        <div id="sight-display" class="map-modes resident-display" role="group" aria-label="居民画面显示方式" hidden><button id="sight-line" aria-pressed="true">居民一维</button><button id="sight-expanded" aria-pressed="false">上下拉满</button></div>
+        <div class="field-control"><div class="control-caption"><label for="resident-window">一维窗口</label><output id="resident-window-value">8%</output></div><input id="resident-window" type="range" min="1" max="100" value="8" step="1"></div>
+      </div>
+      <div class="camera-control">
+        <div class="control-caption"><label for="perspective">观察维度</label><output id="angle-value">90° · 俯视</output></div><input id="perspective" type="range" min="0" max="100" value="0" step="1" aria-label="观察维度"><div class="range-ends"><span>看见形状</span><span>置身其中</span></div>
+        <div class="field-control"><div class="control-caption"><label for="field-angle">可视角</label><output id="field-angle-value">120°</output></div><input id="field-angle" type="range" min="60" max="160" value="120" step="5" aria-label="可视角"></div>
+        <label>一维镜头<select id="projection"><option value="perspective">画面未矫正</option><option value="equidistant">画面矫正</option></select></label>
+        <label><input id="show-range" type="checkbox" checked>显示视野范围</label>
+      </div>
+      <div class="options"><label class="toggle"><input id="coloring" type="checkbox" checked>开启着色</label><label class="population-label paint-style-control">配色风格<select id="paint-style" aria-label="配色风格"></select></label><label class="toggle"><input id="wandering" type="checkbox" checked>自由移动</label><label class="population-label">成像<select id="finish" aria-label="成像"><option value="clear" selected>清透柔光</option><option value="matte">哑光</option><option value="original">原始</option></select></label><label class="toggle"><input id="contour" type="checkbox" checked>辨形增强</label><label class="population-label">居民<select id="population" aria-label="居民数量"><option value="14">14</option><option value="100">100</option><option value="300">300</option></select></label><label class="population-label">交互<select id="interaction" aria-label="交互方式"><option value="kill">击杀</option><option value="touch">触摸</option></select></label><button id="impact">尖角碰撞</button></div>
+    </section>
+    <footer><span><kbd>W</kbd><kbd>S</kbd> 前后 <kbd>A</kbd><kbd>D</kbd> 转向 <kbd>Q</kbd><kbd>E</kbd> 横移</span><span class="desktop-hint">单击转朝向 · 双击空地换位置 · 拖动转向 · <kbd>空格</kbd> 切换视角</span><span id="performance">二维碰撞已开启</span></footer>
+    <nav id="touch-controls" aria-label="触屏移动"><button data-move="KeyA" aria-label="向左转">左转</button><button data-move="KeyW" aria-label="前进">前进</button><button data-move="KeyS" aria-label="后退">后退</button><button data-move="KeyD" aria-label="向右转">右转</button></nav>
+    <dialog id="reference-dialog"><div class="dialog-heading"><span>房屋布局参考</span><button id="close-reference" aria-label="关闭原图">关闭</button></div><img src="./reference.png" alt="用户提供的五边形平面国房屋示意图"><p>按示意图重绘外墙、分室和门洞；尺寸为原型近似值。</p></dialog>
+    <div id="loading">正在进入平面国<span>构建房屋与居民</span></div>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

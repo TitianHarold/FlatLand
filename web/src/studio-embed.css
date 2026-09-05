@@ -1,0 +1,67 @@
+html.studio-embedded body[data-lab=world] header,
+html.studio-embedded body[data-lab=world] .intro,
+html.studio-embedded body[data-lab=world] .controls,
+html.studio-embedded body[data-lab=world] footer,
+html.studio-embedded body[data-lab=world] .scene-meta,
+html.studio-embedded body[data-lab=world] #touch-controls{display:none!important}
+html.studio-embedded body[data-lab=world] .observation-panel{top:auto;bottom:18px;right:18px;width:225px;background:#141a19ed;border:1px solid #343d36;box-shadow:none}
+html.studio-embedded body[data-lab=world] .panel-heading,
+html.studio-embedded body[data-lab=world] .observation-panel p,
+html.studio-embedded body[data-lab=world] .sight-directions{color:#abb7a7}
+html.studio-embedded body[data-lab=world] .panel-heading button{color:#d4ddca;border-color:#454c41}
+html.studio-embedded body[data-lab=world] #minimap-panel{width:175px}
+html.studio-embedded body[data-lab=world] #minimap{width:105px;height:105px;margin:auto}
+html.studio-embedded body[data-lab=world] #minimap-panel p{display:none}
+html.studio-embedded body[data-lab=world] .room-label{font-size:9px;letter-spacing:.5px}
+html.studio-embedded body[data-lab=world] .room-label.main-label{font-size:12px;letter-spacing:2px}
+html.studio-embedded body[data-lab=world] .room-label .sub{display:none}
+html.studio-embedded body[data-lab=world] #toast{top:18px;max-width:90%;white-space:normal}
+html.studio-embedded body[data-lab=characters]{background:#f6f5ef}
+html.studio-embedded body[data-lab=characters] main{max-width:none;margin:0;padding:22px}
+html.studio-embedded body[data-lab=characters] main{display:flex;flex-direction:column;padding:14px}
+html.studio-embedded body[data-lab=characters] main>section:first-of-type{order:2;margin-top:18px}
+html.studio-embedded body[data-lab=characters] .lab-header,
+html.studio-embedded body[data-lab=characters] .preview-controls,
+html.studio-embedded body[data-lab=characters] .section-heading,
+html.studio-embedded body[data-lab=characters] .size-note,
+html.studio-embedded body[data-lab=characters] .action-panel,
+html.studio-embedded body[data-lab=characters] footer,
+html.studio-embedded body[data-lab=characters] .stage-footer{display:none}
+html.studio-embedded body[data-lab=characters] .gallery{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+html.studio-embedded body[data-lab=characters] .character-card{padding:10px}
+html.studio-embedded body[data-lab=characters] .character-card svg{height:75px}
+html.studio-embedded body[data-lab=characters] .character-card figcaption{display:none}
+html.studio-embedded body[data-lab=characters] .motion-section{margin-top:0;padding-top:0;border:0}
+html.studio-embedded body[data-lab=characters] .motion-layout{grid-template-columns:1fr}
+html.studio-embedded body[data-lab=characters] #stage{width:100%;height:clamp(190px,calc(100vh - 30px),400px);min-height:0}
+html.studio-embedded body[data-lab=optics] main{max-width:none;margin:0;padding:22px}
+html.studio-embedded body[data-lab=optics] .study-header,
+html.studio-embedded body[data-lab=optics] .study-intro,
+html.studio-embedded body[data-lab=optics] .shared-controls,
+html.studio-embedded body[data-lab=optics] .comparison-caption,
+html.studio-embedded body[data-lab=optics] .comparison-note,
+html.studio-embedded body[data-lab=optics] .crowd-controls,
+html.studio-embedded body[data-lab=optics] .study-footer,
+html.studio-embedded body[data-lab=optics] .field-heading .check{display:none}
+html.studio-embedded body[data-lab=optics] .field-study{margin-top:0}
+html.studio-embedded body[data-lab=optics] .field-study{padding:12px}
+html.studio-embedded body[data-lab=optics] .field-heading{margin-bottom:8px}
+html.studio-embedded body[data-lab=optics] .field-heading h2{font-size:18px;margin:6px 0}
+html.studio-embedded body[data-lab=optics] .field-heading p,
+html.studio-embedded body[data-lab=optics] .field-note{display:none}
+html.studio-embedded body[data-lab=optics] #field-plan{width:120px;height:65px}
+html.studio-embedded body[data-lab=optics] #field-before{height:30px}
+html.studio-embedded body[data-lab=optics] #field-view{height:55px}
+html.studio-embedded body[data-lab=optics] .field-label{font-size:9px;margin:6px 0}
+html.studio-embedded body[data-lab=optics] .comparison{grid-template-columns:repeat(3,minmax(0,1fr))}
+html.studio-embedded body[data-lab=optics] .field-note{font-size:11px}
+
+/* The workbench's star-field scene skips the old comparison rendering. */
+html.stars-only .field-study,html.stars-only #comparison,html.stars-only .comparison-caption,html.stars-only .comparison-note{display:none}
+html.stars-only.studio-embedded body[data-lab=optics]{background:#000}
+html.stars-only.studio-embedded body[data-lab=optics] main{padding:20px;min-height:100vh;display:flex;flex-direction:column}
+html.stars-only.studio-embedded .crowd-section{margin:0;padding:0;border:0;flex:1;display:flex;flex-direction:column}
+html.stars-only.studio-embedded .crowd-heading>div,html.stars-only.studio-embedded .crowd-footer{display:none}
+html.stars-only.studio-embedded .crowd-heading{position:absolute;right:18px;bottom:18px;margin:0;pointer-events:none}
+html.stars-only.studio-embedded #crowd-map{width:90px;height:90px}
+html.stars-only.studio-embedded #crowd-view{flex:1;min-height:180px}
