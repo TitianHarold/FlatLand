@@ -109,11 +109,11 @@ const controller=(await readFile(new URL('../src/storyboard.js',import.meta.url)
 const playerHtml=await readFile(new URL('../storyboard.html',import.meta.url),'utf8');
 const cameraKeyRelease=calls=>['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE'].every(code=>calls.some(call=>call[0]===code&&call[1]===false));
 async function playerSettings(override){
-  const values={},events={},timers=new Map();let timerId=0,presetReads=0,presetWrites=0;
+  const values={},events={},timers=new Map(),reduced={matches:false};let timerId=0,presetReads=0,presetWrites=0,now=0,raf;
   const element=tag=>({tag,hidden:false,disabled:false,children:[],style:{setProperty(k,v){this[k]=v;}},classList:{classes:new Set(),add(c){this.classes.add(c);},remove(c){this.classes.delete(c);}},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];},focus(){},scrollIntoView(options){this.scrollOptions=options;},addEventListener(){},
     append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
     querySelector(){return this.heading??=element('h2');},querySelectorAll(){return this.children.flatMap(child=>child.tag==='button'?[child]:child.querySelectorAll());},
-    showModal(){this.open=true;},close(){this.open=false;},animate(){return {cancel(){}};}});
+    showModal(){this.open=true;},close(){this.open=false;},animate(frames,options){return this.animation={frames,options,cancelled:false,cancel(){this.cancelled=true;}};}});
   const elements=new Map([...playerHtml.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],element('div')]));
   const keyCalls=[];
   const api={key(code,pressed){keyCalls.push([code,pressed]);},configure(v){Object.assign(values,v);},set(k,v){values[k]=v;},story:{load(){},seek(time){return sampleStory(story,time);}}};
@@ -121,12 +121,18 @@ async function playerSettings(override){
   const saved=JSON.stringify(preset),helpStorage=new Map();
   const sandbox={document,parseStory,stories:[],defaults,storageKey,readPreset,sharedSettings,bindPromptCopy(){},URLSearchParams,
     location:{search:'',hostname:'localhost',origin:'http://localhost:5173'},localStorage:{getItem(key){if(key===storageKey){presetReads++;return saved;}return helpStorage.get(key);},setItem(key,value){if(key===storageKey)presetWrites++;helpStorage.set(key,value);}},
-    structuredClone,performance:{now:()=>0},setTimeout(fn,delay){timers.set(++timerId,{fn,delay});return timerId;},clearTimeout(id){timers.delete(id);},requestAnimationFrame:()=>1,cancelAnimationFrame(){},
+    structuredClone,performance:{now:()=>now},matchMedia:()=>reduced,getComputedStyle:el=>({opacity:el.animation&&!el.animation.cancelled?'.5':el.style.opacity??'1'}),
+    setTimeout(fn,delay){timers.set(++timerId,{fn,delay});return timerId;},clearTimeout(id){timers.delete(id);},requestAnimationFrame(fn){raf=fn;return 1;},cancelAnimationFrame(){raf=null;},
     addEventListener:(name,fn)=>events[name]=fn,fixtureText:source,override};
   await vm.runInNewContext(`(async()=>{${controller}\nstoryPreset=override;loadText(fixtureText,'test');})()`,sandbox);
   const frame=elements.get('world-frame').children[0];
+  const stage=elements.get('world-frame');
+  const finishFade=()=>{for(let i=0;i<2&&stage.animation&&!stage.animation.cancelled;i++)stage.animation.onfinish();};
   events.message({origin:sandbox.location.origin,source:frame.contentWindow,data:{type:'flatland-studio-ready'}});
   assert.equal(elements.get('stage-loading').hidden,true);
+  assert.equal(elements.get('play-icon').src,'./icons/pause.svg');
+  assert.equal(elements.get('play-status').textContent,'播放中','Entering a loaded story starts playback automatically');
+  elements.get('play').onclick();
   const cameraPlaced={origin:sandbox.location.origin,source:frame.contentWindow,data:{type:'flatland-camera-placed'}};
   events.message(cameraPlaced);assert.equal(elements.get('view-status').textContent,'W/S 前后 · A/D 转向 · Q/E 平移');
   [...timers.values()].find(timer=>timer.delay===9000).fn();assert.equal(elements.get('view-status').textContent,'');
@@ -142,7 +148,9 @@ async function playerSettings(override){
   const autoHide=[...timers.values()].find(timer=>timer.delay===2500);assert(autoHide);autoHide.fn();
   assert(!elements.get('theatre').classList.classes.has('controls-visible'),'Playback hides inactive controls');
   elements.get('play').onclick();assert(elements.get('theatre').classList.classes.has('controls-visible'),'Pausing restores controls');
-  elements.get('forward').onclick();assert.equal(elements.get('timeline').value,10,'Fast forward advances ten seconds without changing playback mode');
+  elements.get('forward').onclick();
+  assert.equal(elements.get('timeline').value,0,'Keep the outgoing chapter until it has faded to black');
+  finishFade();assert.equal(elements.get('timeline').value,10,'Fast forward advances ten seconds without changing playback mode');
   events.keydown({code:'KeyW',target:{tagName:'MAIN'},preventDefault(){}});assert.deepEqual(keyCalls.at(-1),['KeyW',true]);
   events.keyup({code:'KeyW'});assert.deepEqual(keyCalls.at(-1),['KeyW',false]);
   events.blur();assert(cameraKeyRelease(keyCalls),'Leaving the player releases every held camera key');
@@ -150,6 +158,22 @@ async function playerSettings(override){
   elements.get('act-list').children[1].children[0].onclick();
   assert.equal(elements.get('timeline').value,6,'A chapter click seeks to its start');
   assert.equal(elements.get('play').title,'暂停','A chapter click immediately starts playback');
+  const chapters=elements.get('act-list').children.map(item=>item.children[0]);
+  chapters[2].onclick();elements.get('play').onclick();finishFade();
+  assert.equal(elements.get('timeline').value,12);assert.equal(elements.get('play-status').textContent,'已暂停','Pausing during a fade keeps the incoming chapter paused');
+  chapters[0].onclick();const superseded=stage.animation;chapters[1].onclick();
+  assert(superseded.cancelled&&superseded.onfinish===null,'A rapid chapter selection cannot apply a stale seek');
+  finishFade();assert.equal(elements.get('timeline').value,6);assert.equal(stage.style.opacity,'1');
+  elements.get('timeline').value=7;elements.get('timeline').oninput();
+  assert(stage.animation.cancelled,'Seeking inside the same chapter does not add a transition');
+  elements.get('timeline').value=5.9;elements.get('timeline').oninput();finishFade();elements.get('play').onclick();
+  now+=200;raf(now);assert.equal(elements.get('timeline').value,5.9,'Automatic chapter boundaries fade the outgoing picture first');
+  now+=500;raf(now);assert.equal(elements.get('timeline').value,5.9,'The story clock holds throughout the transition');
+  finishFade();assert(Math.abs(elements.get('timeline').value-6.1)<1e-9,'Fade time does not skip incoming story actions');
+  elements.get('replay').onclick();finishFade();assert.equal(elements.get('timeline').value,0,'Replay fades back to the opening');
+  reduced.matches=true;chapters[2].onclick();assert.equal(elements.get('timeline').value,12,'Reduced motion switches chapters immediately');
+  reduced.matches=false;chapters[0].onclick();events.pagehide();
+  assert(stage.animation.cancelled&&stage.animation.onfinish===null);assert.equal(stage.style.opacity,'1','Leaving the player clears the fade');
   assert.equal(presetReads,0,'Stories never read the playground preset');
   assert.equal(presetWrites,0,'Stories never write the playground preset');
   return values;
@@ -158,7 +182,7 @@ const adopted=await playerSettings();
 assert.equal(adopted['field-angle'],defaults.view.fieldAngle);assert.equal(adopted['resident-window'],defaults.view.windowHeight);assert.equal(adopted.projection,defaults.view.projection);assert.equal(adopted['paint-style'],defaults.shared.paintStyle);
 const override=structuredClone(preset);override.state.view.fieldAngle=80;override.state.view.windowHeight=23;
 const overridden=await playerSettings(override);assert.equal(overridden['field-angle'],80);assert.equal(overridden['resident-window'],23);
-console.log('Story workflow: independent settings, no playground storage access, palette replay, default observer controls, auto-hide, upload guidance, and dirty-story detection passed.');
+console.log('Story workflow: independent settings, chapter fades, pause/rapid seek/replay/reduced motion, observer controls, upload guidance and dirty-story detection passed.');
 
 const partial={version:1,state:{view:{fieldAngle:80},shared:{coloring:false,exposure:24}}};
 const mergedPreset=readPreset(partial);

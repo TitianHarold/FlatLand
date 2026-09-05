@@ -5,7 +5,8 @@ import {readPreset,sharedSettings} from './studio-preset.js';
 import {bindPromptCopy} from './copy-prompt.js';
 
 const $=id=>document.getElementById(id),theatre=$('theatre');
-let controlsTimer,chapterAnimation,hintTimer;
+let controlsTimer,chapterAnimation,hintTimer,sceneAnimation;
+const reducedMotion=typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
 const scenes={house:'我的家',parade:'彩色阅兵场',stars:'星野',mask:'环形广场'};
 const clock=seconds=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 const storyId=new URLSearchParams(location.search).get('story');
@@ -30,19 +31,39 @@ function display(sample){
     $('act-title').textContent=act.title;$('act-body').textContent=act.text;
     $('transition-index').textContent=String(actIndex+1).padStart(2,'0');$('transition-title').textContent=act.title;
     chapterAnimation?.cancel();
-    chapterAnimation=$('chapter-transition').animate([{opacity:0},{opacity:1,offset:.15},{opacity:1,offset:.7},{opacity:0}],{duration:1800,easing:'ease-out'});
+    if(!reducedMotion.matches)chapterAnimation=$('chapter-transition').animate([{opacity:0},{opacity:1,offset:.15},{opacity:1,offset:.7},{opacity:0}],{duration:1800,easing:'ease-out'});
     [...$('act-list').querySelectorAll('button')].forEach((button,i)=>{
       if(i===actIndex){button.setAttribute('aria-current','step');button.scrollIntoView({block:'nearest',inline:'center'});}else button.removeAttribute('aria-current');
     });
   }
 }
-function seek(next){
-  if(!api)return;
+function clearSceneFade(){
+  if(sceneAnimation){sceneAnimation.onfinish=null;sceneAnimation.cancel();sceneAnimation=null;}
+  $('world-frame').style.opacity='1';
+}
+function showFrame(next){
   display(api.story.seek(next));
   if(time===script.duration)setPlaying(false);
 }
+function seek(next){
+  if(!api)return;
+  const target=Math.max(0,Math.min(script.duration,next));
+  const nextAct=script.acts.findLastIndex(act=>act.start<=target);
+  const stage=$('world-frame'),opacity=sceneAnimation?Number(getComputedStyle(stage).opacity):1;
+  if(sceneAnimation)clearSceneFade();
+  if(nextAct===actIndex||actIndex<0||reducedMotion.matches){showFrame(target);return;}
+  // The player owns transitions. Hold story time while the old picture fades,
+  // seek only at black, then reveal the new chapter before advancing again.
+  sceneAnimation=stage.animate([{opacity},{opacity:0}],{duration:220*opacity,easing:'ease-in',fill:'forwards'});
+  sceneAnimation.onfinish=()=>{
+    stage.style.opacity='0';sceneAnimation.cancel();
+    try{showFrame(target);}catch(error){failStage(error);return;}
+    sceneAnimation=stage.animate([{opacity:0},{opacity:1}],{duration:340,easing:'ease-out',fill:'forwards'});
+    sceneAnimation.onfinish=()=>{clearSceneFade();previous=performance.now();};
+  };
+}
 function failStage(error){
-  clearTimeout(loadTimer);api=null;setPlaying(false);
+  clearTimeout(loadTimer);clearSceneFade();api=null;setPlaying(false);
   $('play').disabled=$('replay').disabled=$('forward').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
   $('point-picker').hidden=true;
@@ -52,7 +73,7 @@ function failStage(error){
 }
 function loadText(text,label){
   const next=parseStory(text); // Preserve the current story if validation fails.
-  clearTimeout(loadTimer);setPlaying(false);api=null;
+  clearTimeout(loadTimer);clearSceneFade();setPlaying(false);api=null;
   script=next;scriptText=text;source=label;time=0;actIndex=-1;
   $('story-title').textContent=script.title;$('story-description').textContent=script.description;
   $('source-label').textContent=script.example?`技术示例 · ${label}`:label;
@@ -98,7 +119,7 @@ addEventListener('message',event=>{
     $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=false;
     $('view-angle').disabled=false;setView(90-preset.view.dimension*.9);$('upload-story').hidden=!local;
     for(const button of $('act-list').querySelectorAll('button'))button.disabled=false;
-    seek(0);setPlaying(false);
+    seek(0);setPlaying(true);
   }catch(error){failStage(error);}
 });
 $('retry').onclick=()=>loadText(scriptText,source);
@@ -116,7 +137,7 @@ function setView(angle){
 }
 function chooseObserver(){
   if(!api)return;
-  setPlaying(false);setView(90);api.story.beginViewpoint();
+  clearSceneFade();setPlaying(false);setView(90);api.story.beginViewpoint();
   $('point-picker').hidden=false;$('pick-hint').textContent='点击画面选择观察点';
   $('view-status').textContent='';$('choose-observer').setAttribute('aria-label','取消选点');$('choose-observer').title='取消选点';$('observer-icon').src='./icons/x.svg';
   $('point-picker').focus({preventScroll:true});
@@ -192,13 +213,13 @@ document.addEventListener('fullscreenchange',()=>{
   $('fullscreen').setAttribute('aria-label',full?'退出全屏':'全屏');$('fullscreen').title=full?'退出全屏':'全屏';showControls();
 });
 function tick(now){
-  if(playing){
+  if(playing&&!sceneAnimation){
     try{seek(Math.min(script.duration,time+(now-previous)/1000));}catch(error){failStage(error);}
   }
   previous=now;animation=playing?requestAnimationFrame(tick):0;
 }
 document.addEventListener('visibilitychange',()=>{if(document.hidden){setPlaying(false);releaseCameraKeys();}});
-addEventListener('pagehide',()=>{releaseCameraKeys();clearTimeout(hintTimer);setPlaying(false);clearTimeout(loadTimer);clearTimeout(controlsTimer);chapterAnimation?.cancel();});
+addEventListener('pagehide',()=>{releaseCameraKeys();clearTimeout(hintTimer);setPlaying(false);clearSceneFade();clearTimeout(loadTimer);clearTimeout(controlsTimer);chapterAnimation?.cancel();});
 
 if(storyId!==null){
   const entry=stories.find(story=>story.id===storyId);
