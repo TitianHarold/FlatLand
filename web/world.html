@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f1ea"><title>平面国 · 一座房子</title></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#000000"><title>平面国 · 一座房子</title></head>
 <body>
   <main id="app">
     <div id="scene" tabindex="0" role="application" aria-label="平面国房屋，W S 前进后退，A D 转向，Q E 横移，空格切换视角"></div>
@@ -23,7 +23,7 @@
     <div class="scene-meta"><span id="mode-label">俯视 / OVERVIEW</span><span id="coordinates">正在构建平面世界…</span></div>
     <section class="controls" aria-label="探索控制">
       <div class="view-control">
-        <div class="view-buttons"><button id="overview" class="selected" aria-pressed="true">俯视世界</button><button id="resident" aria-pressed="false">进入平面国</button></div>
+        <div class="view-buttons"><button id="overview" class="selected" aria-pressed="true">俯视世界</button><button id="resident" aria-pressed="false">居民视角</button></div>
         <div id="sight-display" class="map-modes resident-display" role="group" aria-label="居民画面显示方式" hidden><button id="sight-line" aria-pressed="true">居民一维</button><button id="sight-expanded" aria-pressed="false">上下拉满</button></div>
         <div class="field-control"><div class="control-caption"><label for="resident-window">一维窗口</label><output id="resident-window-value">8%</output></div><input id="resident-window" type="range" min="1" max="100" value="8" step="1"></div>
       </div>

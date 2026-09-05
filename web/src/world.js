@@ -24,7 +24,7 @@ export const labels = [
   ['地窖',427,454,'',''],['孙子们的房间',256,421,'small-label',''],['入口',124,401,'small-label',''],['入口',584,284,'small-label',''],['我的妻子',285,373,'small-label','']
 ];
 let initialized;
-export async function createSimulation({layout='house',wandering=layout==='house',pathfinding=false,residentKilling=false}={}) {
+export async function createSimulation({layout='house',wandering=layout==='house',pathfinding=false,residentKilling=false,scripted=false}={}) {
   initialized ??= RAPIER.init();
   await initialized;
   const world = new RAPIER.World({x:0,y:0});
@@ -64,7 +64,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   // Circumcircle leaves room to turn at corners, with a small steering margin.
   const walkingShape=new RAPIER.Ball(player.radius+.04);
   const castWalk=(a,b)=>world.castShape(a,0,{x:b.x-a.x,y:b.y-a.y},walkingShape,0,1,false,undefined,undefined,player.collider);
-  if(layout==='house'){
+  if(layout==='house'&&!scripted){
   for (const [x,y,n,size] of [[280,120,5,.78],[221,175,5,.78],[162,226,5,.72],[144,300,5,.60],[217,470,6,.5],[292,464,6,.62]]) addEntity({...point(x,y),type:`regular-${n}`,size,angle:.25});
   for (const [x,y] of [[480,339],[472,362],[465,385]]) addEntity({...point(x,y),type:'narrow-triangle',angle:2.9,name:'仆役'});
   addEntity({...point(283,360),type:'woman',angle:.3,name:'妻子'});
@@ -88,13 +88,41 @@ export async function createSimulation({layout='house',wandering=layout==='house
       }
     }
   }
-  if(maskTest||stars)fieldPopulation(stars?240:996);
+  if(!scripted&&(maskTest||stars))fieldPopulation(stars?240:996);
+  const scriptActors=new Map();
+  function setScriptActors(actors,observer,paintStyle){
+    if(!scripted)throw new Error('脚本角色仅可用于剧场世界');
+    aimAt(null);setWandering(false);
+    for(const e of [...entities])if(e!==player)remove(e);
+    scriptActors.clear();player.stop();player.body.setEnabled(false);player.storyVisible=false;
+    const [x,y]=observer?.position??[home.x,home.y];
+    player.body.setTranslation({x,y},true);player.body.setRotation((observer?.angle??90)*Math.PI/180,true);
+    for(const actor of actors){
+      const [x,y]=actor.position;
+      const e=addEntity({x,y,type:actor.type,size:actor.size,angle:actor.angle*Math.PI/180,name:actor.name,role:'script'});
+      if(paintStyle)e.setPaintStyle(paintStyle);
+      e.storyBasePaint={color:e.color,edgeColors:[...e.edgeColors]};
+      e.storyId=actor.id;e.setInteraction('touch');e.body.setEnabled(false);scriptActors.set(actor.id,e);
+    }
+  }
+  function applyScriptFrame(frame){
+    if(!scripted)throw new Error('脚本帧仅可用于剧场世界');
+    for(const actor of frame.actors){
+      const e=scriptActors.get(actor.id);
+      if(!e)throw new Error(`未知脚本角色：${actor.id}`);
+      e.body.setTranslation({x:actor.position[0],y:actor.position[1]},true);
+      e.body.setRotation(actor.angle*Math.PI/180,true);
+      e.storyVisible=actor.visible;e.color=actor.color??e.storyBasePaint.color;
+      e.edgeColors=actor.color===undefined?[...e.storyBasePaint.edgeColors]:[actor.color];
+    }
+  }
   function occupied(pos, radius=.33, exclude=null) {
     let hit=false;
     world.intersectionsWithShape(pos,0,new RAPIER.Ball(radius),()=>{hit=true;return false;},undefined,undefined,exclude?.collider);
     return hit;
   }
   function relocate(pos) {
+    if(scripted)return false;
     if(player.state==='dead'||!Number.isFinite(pos.x)||!Number.isFinite(pos.y))return false;
     let blocked=false;
     world.intersectionsWithShape(pos,player.body.rotation(),player.collider.shape,()=>{blocked=true;return false;},undefined,undefined,player.collider);
@@ -128,6 +156,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
   }
   const defaultPopulation=parade?1000:entities.length;
   function population(count) {
+    if(scripted)return entities.length;
     aimAt(null);
     count=count||defaultPopulation;
     // Placement advances physics to refresh queries, so pause existing motion first.
@@ -224,6 +253,15 @@ export async function createSimulation({layout='house',wandering=layout==='house
     });
   }
   function step(input={forward:0,side:0,turn:0},dt=1/60) {
+    if(scripted){
+      // Keep the cast deterministic while the viewer moves the camera freely.
+      player.move({...input,speed:1});
+      const p=player.body.translation(),drive=player.drive;
+      const next={x:p.x+drive.x*dt,y:p.y+drive.y*dt};
+      if((drive.x||drive.y)&&!occupied(next,.1,player))player.body.setTranslation(next,true);
+      if(drive.angular)player.body.setRotation(player.body.rotation()+drive.angular*dt,true);
+      return;
+    }
     const controls={...input};
     if(input.forward||input.side||input.turn||player.state==='dead')aimAt(null);
     const before=walkTarget?player.body.translation():null;
@@ -279,7 +317,7 @@ export async function createSimulation({layout='house',wandering=layout==='house
     }
   }
   world.step(events);events.clear();
-  if(parade)population(1000);
-  return {world,events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
+  if(parade&&!scripted)population(1000);
+  return {world,events,player,entities,walls,outline:layout==='house'?outline:null,bounds,home,layout,byCollider,step,relocate,aimAt,walkTo,occupied,population,remove,setWandering,setPathfinding,setResidentKilling,setScriptActors,applyScriptFrame,get pathfinding(){return pathfinding;},get residentKilling(){return residentKilling;},get walkTarget(){return walkTarget;},get walkStatus(){return walkStatus;},get wandering(){return wandering;},get touching(){return touching;},dispose(){events.free();world.free();}};
 }
 export {RAPIER};

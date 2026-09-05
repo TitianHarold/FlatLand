@@ -1,5 +1,7 @@
-import {PAINT_STYLES,DEFAULT_PAINT_STYLE,DEFAULT_WALL_COLOR,setCustomPaintStyle,setPaintMode,setWallColor} from './paint.js';
-import {OPTICS_RULES,distanceAttenuation,scatterProgress} from './optics.js';
+import {defaults,storageKey,GAIN_LIMIT,readPreset,sharedSettings} from './studio-preset.js';
+import {bindPromptCopy} from './copy-prompt.js';
+import {PAINT_STYLES,setCustomPaintStyle,setPaintMode,setWallColor} from './paint.js';
+import {distanceAttenuation,scatterProgress} from './optics.js';
 import {LENGTH_UNIT,formatLength} from './measure.js';
 import './workspace-chrome.css';
 import './studio.css';
@@ -12,16 +14,7 @@ const scenes={
   mask:{title:'同心圆遮罩',url:'./world.html?studio=1&scene=mask',kind:'world'},
   characters:{title:'角色与碰撞',url:'./character-lab.html?studio=1',kind:'characters'},
 };
-const defaults={
-  currentScene:'house',
-  shared:{paintStyle:DEFAULT_PAINT_STYLE,customPaint:{colors:[...PAINT_STYLES.custom.colors]},paintMode:'solid',wallColor:DEFAULT_WALL_COLOR,coloring:true,
-    exposure:OPTICS_RULES.exposure,detailGain:1,detailStyle:'velvet',scatterEnabled:true,scatterDistance:128,scatterCurve:'quadratic',attenuationEnabled:true,attenuationDistance:2048,attenuationCurve:'quadratic',
-    residentEmission:OPTICS_RULES.materials.resident.emission,houseEmission:2**-7},
-  view:{dimension:0,display:'line',fieldAngle:120,windowHeight:1,projection:'perspective',showRange:true,mapLocked:true},
-  behavior:{population:0,wandering:false,interaction:'touch',pathfinding:false,residentKilling:false,deathAnimation:false},
-};
 let state=structuredClone(defaults),api=null,loadTimer,saveTimer;
-const storageKey='flatland-studio-preset-v1';
 const requested=new URLSearchParams(location.search).get('scene'),requestedScene=requested==='optics'?'stars':requested;
 if(Object.hasOwn(scenes,requestedScene))state.currentScene=requestedScene;
 
@@ -40,7 +33,6 @@ const worldView=[
   number('view.windowHeight','一维窗口',1,100,1,v=>`${v}%`),
 ];
 let activeFields=[];
-const GAIN_LIMIT=16;
 function renderField(def){
   activeFields.push(def);
   const value=get(def.path),id=`control-${def.path.replace('.','-')}`;
@@ -54,7 +46,7 @@ function renderField(def){
   return `<div class="control"><div class="control-heading"><label for="${id}" ${described}>${def.label}</label>${numeric}</div><input id="${id}" data-path="${def.path}" type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${controlValue}" ${def.toControl?`aria-valuetext="${def.format(value)}"`:''} ${described}></div>`;
 }
 function lightSummary(){
-  const rules=sharedSettings();
+  const rules=sharedSettings(state.shared);
   for(const [id,scattering,scale] of [['attenuation-plot',false,state.shared.attenuationDistance],['scatter-plot',true,state.shared.scatterDistance]]){
     const plot=$(id);if(!plot)continue;
     const response=d=>scattering?(state.shared.scatterEnabled?1-scatterProgress(d,scale,state.shared.scatterCurve):1):distanceAttenuation(d,rules);
@@ -115,15 +107,9 @@ function syncDisabled(snapshot=api?.snapshot()){
   if($('expand-shapes'))$('expand-shapes').disabled=!api||snapshot.cameraProgress!==1;
   for(const id of ['zoom-out','zoom-fit','zoom-in'])$(id).disabled=!api||snapshot.cameraProgress!==0||(id==='zoom-out'&&snapshot.overviewZoom<=.25)||(id==='zoom-in'&&snapshot.overviewZoom>=16);
 }
-function sharedSettings(){return {
-  // Visibility and scatter distances stay independent across every scene.
-  exposure:state.shared.exposure,detailGain:state.shared.detailGain===0?0:2**state.shared.detailGain,detailStyle:state.shared.detailStyle,visionEffect:state.shared.scatterEnabled?(state.shared.attenuationEnabled?'both':'scatter'):'attenuation',scatterDistance:state.shared.scatterDistance,scatterCurve:state.shared.scatterCurve,fog:0,residentEmission:state.shared.residentEmission,houseEmission:state.shared.houseEmission,
-  attenuationDistance:state.shared.attenuationEnabled?state.shared.attenuationDistance:0,
-  attenuationMode:'mask',attenuationFloor:0,attenuationCurve:state.shared.attenuationCurve,paintStyle:state.shared.paintStyle,customPaint:state.shared.customPaint,paintMode:state.shared.paintMode,wallColor:state.shared.wallColor,
-};}
 function applyShared(changedKey){
   if(!api)return;
-  const repaint=!changedKey||['paintStyle','paintMode','wallColor'].includes(changedKey),settings=sharedSettings();
+  const repaint=!changedKey||['paintStyle','paintMode','wallColor'].includes(changedKey),settings=sharedSettings(state.shared);
   if(!repaint)for(const key of ['paintStyle','customPaint','paintMode','wallColor'])delete settings[key];
   api.configure(settings);
   if(!changedKey){api.set('finish','clear');api.set('contour',true);}
@@ -257,47 +243,12 @@ function saveConfig(){
 }
 function queueSave(){clearTimeout(saveTimer);$('save-status').textContent='保存中…';saveTimer=setTimeout(saveConfig,250);}
 window.addEventListener('pagehide',()=>{if(saveTimer)saveConfig();});
-// Read only known, bounded configuration fields from the browser's saved preset.
-function readPreset(saved){
-  if(saved?.state?.currentScene==='optics')saved.state.currentScene='stars';
-  if(saved?.version!==1||!saved.state||!Object.hasOwn(scenes,saved.state.currentScene))throw new Error('Invalid preset');
-  const result=structuredClone(defaults),source=saved.state;
-  // Older presets chose a combined mode under one master switch.
-  if(source.shared&&source.shared.scatterEnabled==null){
-    const enabled=source.shared.attenuationEnabled??true;
-    source.shared.scatterEnabled=enabled&&['scatter','both'].includes(source.shared.visionEffect);
-    source.shared.attenuationEnabled=enabled&&source.shared.visionEffect!=='scatter';
-  }
-  if(source.shared?.scatterAmount===0)source.shared.scatterEnabled=false;
-  const enums={scatterCurve:['smooth','linear','quadratic','exponential','logarithmic'],detailStyle:['soft','velvet','sharp'],paintStyle:Object.keys(PAINT_STYLES),paintMode:['solid','mixed'],attenuationCurve:['smooth','linear','exponential','quadratic','inverse-square'],display:['expanded','line'],projection:['equidistant','perspective']};
-  const limits={exposure:[1.5,96],detailGain:[0,3],scatterDistance:[2,8192],residentEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],houseEmission:[2**-GAIN_LIMIT,2**GAIN_LIMIT],attenuationDistance:[2,8192],dimension:[0,100],fieldAngle:[60,160],windowHeight:[1,100]};
-  // Older presets kept behavior per scene. Adopt the current scene's values once.
-  source.behavior??={...defaults.behavior,...source[source.currentScene]};
-  if(!source.shared.wallColor&&source.shared.paintStyle==='custom')source.shared.wallColor=source.shared.customPaint?.wall;
-  for(const group of ['shared','view','behavior']){
-    for(const [key,defaultValue] of Object.entries(defaults[group])){
-      let value=source[group]?.[key]??defaultValue;
-      if(key==='customPaint'){setCustomPaintStyle(value);value={colors:[...PAINT_STYLES.custom.colors],...(PAINT_STYLES.custom.pattern?{pattern:PAINT_STYLES.custom.pattern}:{})};}
-      if(key==='wallColor'&&!/^#[0-9a-f]{6}$/i.test(value))throw new Error('Invalid wall colour');
-      // Preserve the old appearance once, then save the two distances separately.
-      if(key==='scatterDistance'&&source.shared.scatterDistance==null)value=source.shared.attenuationDistance??defaultValue;
-      if(['attenuationDistance','scatterDistance'].includes(key)&&value===1)value=2;
-      if(key==='detailGain'&&Number.isInteger(value)&&value>=-3&&value<0)value=0;
-      if(['residentEmission','houseEmission','exposure'].includes(key)&&typeof value==='number'&&Number.isFinite(value)&&value>=0){
-        const base=key==='exposure'?12:1,limit=key==='exposure'?3:GAIN_LIMIT;
-        value=base*2**Math.max(-limit,Math.min(limit,Math.round(Math.log2(value/base))));
-      }
-      if(typeof value!==typeof defaultValue)throw new Error('Invalid type');
-      if(typeof value==='number'&&(!Number.isFinite(value)||limits[key]&&(value<limits[key][0]||value>limits[key][1])))throw new Error('Out of range');
-      if(enums[key]&&!enums[key].includes(value))throw new Error('Invalid option');
-      if(key==='interaction'&&!['kill','touch'].includes(value))throw new Error('Invalid interaction');
-      if(key==='population'&&![0,14,100,300,1000,2000].includes(value))throw new Error('Invalid population');
-      if(key==='detailGain'&&!Number.isInteger(value))throw new Error('Invalid detail gain');
-      result[group][key]=value;
-    }
-  }
-  result.currentScene=source.currentScene;return result;
-}
+$('export-config').onclick=()=>{
+  $('export-json').value=JSON.stringify({version:1,state},null,2);
+  $('copy-export').textContent='复制';$('export-status').textContent='';$('export-dialog').showModal();
+};
+$('close-export').onclick=()=>$('export-dialog').close();
+bindPromptCopy($('export-json'),$('copy-export'),$('export-status'));
 $('restore').onclick=()=>{const current=state.currentScene;state=structuredClone(defaults);setCustomPaintStyle(state.shared.customPaint);setPaintMode(state.shared.paintMode);setWallColor(state.shared.wallColor);loadScene(current);};
 try{const raw=localStorage.getItem(storageKey);if(raw)state=readPreset(JSON.parse(raw));}
 catch{$('save-status').textContent='保存的配置不可用，已使用默认值';}

@@ -2,14 +2,14 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f5f4ef"><title>平面国 · 场景工作台</title>
+  <meta name="theme-color" content="#000000"><title>平面国 · 场景工作台</title>
 </head>
 <body>
   <div class="studio-shell">
-    <header class="topbar">
-      <a class="brand" href="./studio.html" aria-label="平面国场景工作台"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg><span>平面国 <small>FLATLAND</small></span></a>
-      <h1 class="workspace-label">场景工作台</h1>
-      <div class="top-actions"><span class="local-label" id="save-status" role="status">自动保存</span><button id="restore" class="quiet-button" title="将所有参数恢复为默认值，保留当前场景">恢复默认</button></div>
+    <header class="app-header">
+      <a class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg><span>平面国<small>FLATLAND</small></span></a>
+      <nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories">故事</a><a href="./studio.html" aria-current="page">场景工作台</a></nav>
+      <div class="app-header-actions"><span id="save-status" role="status">自动保存</span><button id="export-config" type="button" aria-haspopup="dialog">导出配置</button><button id="restore" class="quiet-button" title="将所有参数恢复为默认值，保留当前场景">恢复默认</button></div>
     </header>
     <aside class="library" aria-label="场景库">
       <div class="library-heading"><span>场景库</span><span class="tiny">SCENES / 04</span></div>
@@ -41,7 +41,8 @@
     </main>
     <section class="inspector" aria-label="发光方式、光线衰减、散射模糊、镜头与行为配置"><div id="inspector-content"></div></section>
   </div>
-  <dialog id="about-dialog"><div class="dialog-title"><span class="eyebrow">ONE WORKSPACE / FOUR THREADS</span><button id="close-about" aria-label="关闭说明">×</button></div><h2>一个场景，四个观察方向。</h2><p>俯视单击空白让观察者走过去，双击空白瞬移。居民视角单击或拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>色彩革命视觉风格</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">配置自动保存在当前浏览器，刷新或重新打开时恢复。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
+  <dialog id="about-dialog"><div class="dialog-title"><button id="close-about" aria-label="关闭说明">×</button></div><h2>场景工作台说明</h2><p>俯视单击空白让观察者走过去，双击空白瞬移。居民视角单击或拖动转向。W/S 前后，A/D 转向，Q/E 横移。</p><p>1 身长 = 成年标准体型的外接圆直径。幼体最小 0.3 身长，成年最大 1 身长；体型、距离、视野范围和高度共用这个尺度，不随镜头缩放改变。</p><dl><dt>房间实验室</dt><dd>提供房屋、门洞、世界推进，以及 1,000／2,000 人色彩检阅场。</dd><dt>角色实验室</dt><dd>提供六种角色、体型、手动运动、触摸与尖角碰撞。</dd><dt>光线实验室</dt><dd>星野已接入同一个 3D 世界；所有场景共享镜头、视野、发光与行为参数。</dd><dt>居民配色</dt><dd>采用已选定的杜菲《电之精灵》方向，比较明亮色域和千人队列的效果。</dd></dl><p class="note">当前是视觉与规则实验。历史阶段、集体转身和整段叙事尚未编排。距离遮罩以观察者为中心；范围外完全变黑，实体仍遮挡后方。</p><p class="note">配置自动保存在当前浏览器，刷新或重新打开时恢复。包含参数与当前场景，不包含居民的临时位置、生死或运行进度。</p></dialog>
+  <dialog id="export-dialog" aria-labelledby="export-title"><div class="export-heading"><h2 id="export-title">导出配置</h2><button id="close-export" type="button">关闭</button></div><p>复制给 Agent，用于后续故事。</p><textarea id="export-json" readonly rows="15" spellcheck="false" aria-label="场景工作台配置 JSON"></textarea><div class="export-actions"><p id="export-status" role="status"></p><button id="copy-export" type="button">复制</button></div></dialog>
   <script type="module" src="./src/studio.js"></script>
 </body>
 </html>

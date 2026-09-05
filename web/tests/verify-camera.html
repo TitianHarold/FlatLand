@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><title>摄像机检查</title>
+<style>body{font:14px system-ui;background:#111;color:#ddd;margin:24px}iframe{width:900px;max-width:100%;height:500px;border:1px solid #444}pre{white-space:pre-wrap;line-height:1.8}</style>
+<h1>摄像机检查</h1><pre id="result" role="status">正在运行…</pre><iframe title="摄像机验证场景"></iframe>
+<script type="module">
+const frame=document.querySelector('iframe'),output=document.querySelector('pre'),checks=[];
+const assert=(value,message)=>{if(!value)throw new Error(message);checks.push(`PASS · ${message}`);output.textContent=checks.join('\n');};
+const next=()=>new Promise(resolve=>frame.contentWindow.requestAnimationFrame(resolve));
+async function settle(ms=60){const start=performance.now();while(performance.now()-start<ms)await next();}
+function load(scene,scripted){return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('场景加载超时')),12000);
+  const ready=event=>{if(event.source===frame.contentWindow&&event.origin===location.origin&&event.data?.type==='flatland-studio-ready'){clearTimeout(timer);removeEventListener('message',ready);resolve(frame.contentWindow.flatlandStudio);}};
+  addEventListener('message',ready);frame.src=`../world.html?studio=1&scene=${scene}${scripted?'&storyboard=1':''}`;
+});}
+function guides(api,label){
+  const {eye,ring,range,rays}=api.snapshot().guideOrigins;
+  assert([ring,range,...rays].every(origin=>origin.every((value,i)=>Math.abs(value-eye[i])<1e-9)),`${label}：圆环、中心线、边界线、范围圆与真实镜头同心且共面`);
+}
+try{
+  const example=await (await fetch('../stories/examples/technical-demo.json')).json();
+  for(const scene of ['house','parade','stars','mask'])for(const scripted of [false,true]){
+    const label=`${scene} / ${scripted?'故事':'工作台'}`,api=await load(scene,scripted);
+    api.set('wandering',false);
+    if(scripted)api.story.load(JSON.stringify({...example,scene}));
+    await settle();guides(api,label);
+    if(scripted){
+      api.story.beginViewpoint();await settle();
+      const canvas=frame.contentDocument.getElementById('scene'),rect=canvas.getBoundingClientRect();
+      const event=(type,detail,x,y)=>new frame.contentWindow.MouseEvent(type,{bubbles:true,cancelable:true,detail,clientX:rect.left+rect.width*x,clientY:rect.top+rect.height*y});
+      const actorPoses=JSON.stringify(api.story.snapshot().actors);
+      let angle=api.snapshot().observer.angle;
+      assert(!canvas.dispatchEvent(event('contextmenu',1,.8,.3)),`${label}：右键定朝向并抑制菜单`);
+      await settle();assert(Math.abs(api.snapshot().observer.angle-angle)>.01,`${label}：右键实际改变镜头朝向`);
+      angle=api.snapshot().observer.angle;canvas.dispatchEvent(event('click',1,.15,.25));await settle(320);
+      assert(Math.abs(api.snapshot().observer.angle-angle)>.01,`${label}：单击实际改变镜头朝向`);
+      const before=api.snapshot().observer;let moved=false;
+      for(const [x,y] of [[.05,.95],[.95,.95],[.95,.05]]){
+        canvas.dispatchEvent(event('click',1,x,y));canvas.dispatchEvent(event('click',2,x,y));canvas.dispatchEvent(event('dblclick',2,x,y));await settle(300);
+        const after=api.snapshot().observer;moved=Math.hypot(after.x-before.x,after.y-before.y)>.2;
+        if(moved){assert(Math.abs(after.angle-before.angle)<.001,`${label}：双击换位置保留朝向，不触发单击或寻路`);break;}
+      }
+      assert(moved,`${label}：双击实际改变位置`);guides(api,label+' 移动后');
+      const initial=api.snapshot().observer;api.key('KeyD',true);api.key('KeyW',true);await settle(150);api.key('KeyD',false);api.key('KeyW',false);
+      const afterKeys=api.snapshot().observer;
+      assert(Math.abs(afterKeys.angle-initial.angle)>.1&&Math.hypot(afterKeys.x-initial.x,afterKeys.y-initial.y)>.05,`${label}：键盘改变镜头位置与朝向`);
+      await settle(100);assert(JSON.stringify(api.snapshot().observer)===JSON.stringify(afterKeys),`${label}：松键立即停止`);
+      assert(JSON.stringify(api.story.snapshot().actors)===actorPoses,`${label}：摄像机操作不改变剧本角色`);
+      const capture=canvas.setPointerCapture;canvas.setPointerCapture=()=>{};angle=api.snapshot().observer.angle;
+      for(const [type,x] of [['pointerdown',.5],['pointermove',.6],['pointerup',.6]])canvas.dispatchEvent(new frame.contentWindow.PointerEvent(type,{bubbles:true,pointerId:1,button:0,clientX:rect.left+rect.width*x,clientY:rect.top+rect.height*.5}));
+      canvas.setPointerCapture=capture;await settle(180);assert(Math.abs(api.snapshot().observer.angle-angle)>.1,`${label}：拖动画面可转向`);
+    }
+    api.set('perspective',50);await settle(1000);guides(api,label+' 倾斜后');
+  }
+  document.title='PASS · 摄像机检查';output.textContent+=`\n完成：${checks.length} 项`;
+}catch(error){document.title='FAIL · 摄像机检查';output.textContent+=`\nFAIL · ${error.message}`;console.error(error);}
+</script>
+</html>

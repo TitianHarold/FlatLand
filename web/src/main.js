@@ -8,15 +8,19 @@ import {connectStudio} from './studio-bridge.js';
 import {createScatter} from './scatter.js';
 import {formatLength} from './measure.js';
 import {updateDeathEffect} from './death-effect.js';
+import {parseStory,sampleStory} from './story-script.js';
 
 const $=id=>document.getElementById(id);
 const requestedLayout=new URLSearchParams(location.search).get('scene');
+const scripted=new URLSearchParams(location.search).has('storyboard');
+let storyObserverSelected=false;
 const layout=['parade','mask','stars'].includes(requestedLayout)?requestedLayout:'house';
 const parade=layout==='parade',maskTest=layout==='mask',stars=layout==='stars',openScene=layout!=='house';
 let sim;
-try { sim=await createSimulation({layout}); }
+try { sim=await createSimulation({layout,scripted}); }
 catch(error){$('loading').textContent='物理世界加载失败，请刷新重试。';console.error(error);throw error;}
 const container=$('scene'), renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+if(scripted){container.setAttribute('role','img');container.setAttribute('aria-label','故事画面');container.tabIndex=-1;}
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setClearColor('#000000');
 container.appendChild(renderer.domElement);
@@ -169,7 +173,7 @@ for(const [i,w] of sim.walls.entries()) {
 const entityMeshes=new Map();
 let deathAnimation=false;
 function addMesh(e) {
-  setScenePaintStyle([e],rules,rules.paintStyle);
+  if(!e.storyId)setScenePaintStyle([e],rules,rules.paintStyle);
   const vertices=e.vertices,edges=e.paintedEdges??vertices.map((a,i)=>({a,b:vertices[(i+1)%vertices.length]}));
   const geometry=paintedGeometry(edges),material=opticalMaterial();
   const mesh=new THREE.Mesh(geometry,material);
@@ -193,24 +197,25 @@ function updateMeshPaint(mesh,character) {
   }
 }
 // Debug geometry shares the observer and the mask's finite range.
-const cone=new THREE.Group();scene.add(cone);
+const observerGuide=new THREE.Group();scene.add(observerGuide);
+const cone=new THREE.Group();observerGuide.add(cone);
 const sightGuides=[0,.5,1].map(screenX=>{
   const geometry=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
-  const line=new THREE.Line(geometry,new THREE.LineDashedMaterial({color:'#8fae80',transparent:true,opacity:screenX===.5?.32:.65,depthWrite:false,dashSize:screenX===.5?.2:.6,gapSize:.18}));
+  const line=new THREE.Line(geometry,new THREE.LineDashedMaterial({color:'#aaa',transparent:true,opacity:screenX===.5?.32:.65,depthWrite:false,dashSize:screenX===.5?.2:.6,gapSize:.18}));
   cone.add(line);return {line,screenX};
 });
 const rangeCircle=new THREE.Line(new THREE.BufferGeometry().setFromPoints(
   Array.from({length:129},(_,i)=>new THREE.Vector3(Math.cos(i*Math.PI/64),Math.sin(i*Math.PI/64),0))),
-  new THREE.LineDashedMaterial({color:'#8fae80',transparent:true,opacity:.55,depthWrite:false,dashSize:.055,gapSize:.035}));
-rangeCircle.computeLineDistances();scene.add(rangeCircle);
-const ring=new THREE.Mesh(new THREE.RingGeometry(.43,.45,48),new THREE.MeshBasicMaterial({color:'#829972',transparent:true,opacity:.55,side:THREE.DoubleSide}));scene.add(ring);
+  new THREE.LineDashedMaterial({color:'#aaa',transparent:true,opacity:.55,depthWrite:false,dashSize:.055,gapSize:.035}));
+rangeCircle.computeLineDistances();observerGuide.add(rangeCircle);
+const ring=new THREE.Mesh(new THREE.RingGeometry(.43,.45,48),new THREE.MeshBasicMaterial({color:'#ccc',transparent:true,opacity:.55,side:THREE.DoubleSide}));observerGuide.add(ring);
 const targetMarker=new THREE.Mesh(new THREE.CircleGeometry(1,24),new THREE.MeshBasicMaterial({color:'#f1d575',depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
 targetMarker.layers.set(2);targetMarker.renderOrder=10;targetMarker.visible=false;scene.add(targetMarker);
 let targetMarkerUntil=0;
 function markTarget(target){targetMarker.position.set(target.x,target.y,.09);targetMarkerUntil=performance.now()+900;}
 for(const guide of [cone,rangeCircle,ring])guide.traverse(part=>part.layers.set(2));
-if(parade)ring.scale.setScalar(4);
-const labelElements=(openScene?[]:labels).map(([name,x,y,cls,sub])=>{
+if(parade&&!scripted)ring.scale.setScalar(4);
+const labelElements=(openScene||scripted?[]:labels).map(([name,x,y,cls,sub])=>{
   const el=document.createElement('div');el.className=`room-label ${cls}`;el.textContent=name;
   if(sub){const span=document.createElement('span');span.className='sub';span.textContent=sub;el.appendChild(span);}
   $('labels').appendChild(el);return{el,position:new THREE.Vector3(point(x,y).x,point(x,y).y,.1)};
@@ -276,7 +281,7 @@ function drawMini(observer) {
   }
   mini.setLineDash([]);
   function drawResident(e) {
-    if(e.state==='dead')return;
+    if(e.state==='dead'||e.storyVisible===false)return;
     const pos=e.body.translation(),angle=e.body.rotation();
     // Small residents get a readable map symbol without changing world geometry.
     const size=Math.max(...e.vertices.map(v=>Math.hypot(v.x,v.y)));
@@ -314,7 +319,8 @@ const overviewBounds=new THREE.Box2();
 function fitOverview(){
   overviewBounds.makeEmpty();
   for(const wall of wallBoundaries)for(const vertex of wall.vertices)overviewBounds.expandByPoint(vertex);
-  for(const entity of sim.entities)for(const vertex of worldVertices(entity.vertices,entity.body.translation(),entity.body.rotation()))overviewBounds.expandByPoint(vertex);
+  for(const entity of sim.entities)if(!scripted||entity!==sim.player)for(const vertex of worldVertices(entity.vertices,entity.body.translation(),entity.body.rotation()))overviewBounds.expandByPoint(vertex);
+  if(overviewBounds.isEmpty())overviewBounds.set(new THREE.Vector2(-1,-1),new THREE.Vector2(1,1));
   overviewZoom=1;
 }
 fitOverview();
@@ -436,7 +442,10 @@ addEventListener('keydown',e=>{
   if($('reference-dialog').open||['INPUT','SELECT'].includes(e.target.tagName)||(e.target.tagName==='BUTTON'&&e.code==='Space'))return;
   if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
   if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){clearTimeout(clickTimer);sim.aimAt(null);}
-  if(e.code==='Space'&&!e.repeat)setPerspective(targetPerspective>.5?0:1);
+  if(e.code==='Space'&&!e.repeat){
+    if(scripted)parent.postMessage({type:'flatland-story-toggle-view'},location.origin);
+    else setPerspective(targetPerspective>.5?0:1);
+  }
   keys.add(e.code);
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
@@ -449,7 +458,23 @@ let drag=null,pendingTurn=0,suppressClick=false,clickTimer;
 function groundPoint(event) {
   const rect=container.getBoundingClientRect(),raycaster=new THREE.Raycaster();
   raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2),camera);
-  return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),0),new THREE.Vector3());
+  return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-PLANE_HEIGHT),new THREE.Vector3());
+}
+function cameraTarget(event){
+  if(perspective!==1)return groundPoint(event);
+  const eye=currentObserver(),rect=container.getBoundingClientRect(),d=sightDirection(eye,(event.clientX-rect.left)/rect.width);
+  return d?{x:eye.x+d.x,y:eye.y+d.y}:null;
+}
+function pointCameraAt(target){
+  if(!target)return;
+  const eye=sim.player.body.translation(),dx=target.x-eye.x,dy=target.y-eye.y;
+  if(Math.hypot(dx,dy)>1e-6)sim.player.body.setRotation(Math.atan2(dy,dx),true);
+}
+function placeStoryCamera(target){
+  if(!target||![target.x,target.y].every(Number.isFinite))throw new Error('请重新选择观察点');
+  if(sim.occupied(target,.1,sim.player))throw new Error('这个点位在墙体内，请选择空地');
+  sim.player.body.setTranslation({x:target.x,y:target.y},true);storyObserverSelected=true;
+  parent.postMessage({type:'flatland-camera-placed'},location.origin);
 }
 container.addEventListener('pointerdown',e=>{
   if(e.button!==0)return;
@@ -457,12 +482,13 @@ container.addEventListener('pointerdown',e=>{
   sim.aimAt(null);container.focus({preventScroll:true});container.setPointerCapture(e.pointerId);
   drag={startX:e.clientX,startY:e.clientY,x:e.clientX,moved:false};suppressClick=false;
 });
-container.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x;drag.x=e.clientX;if(Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>5)drag.moved=true;if(drag.moved&&perspective===1)pendingTurn-=dx*.005;});
+container.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x;drag.x=e.clientX;if(Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>5)drag.moved=true;if(drag.moved&&(perspective===1||scripted))pendingTurn-=dx*.005;});
 container.addEventListener('pointerup',()=>{suppressClick=!!drag?.moved;drag=null;});
 container.addEventListener('pointercancel',()=>{drag=null;suppressClick=true;});
 container.addEventListener('click',e=>{
   clearTimeout(clickTimer);
   if(suppressClick||e.detail!==1)return;
+  if(scripted){const target=cameraTarget(e);clickTimer=setTimeout(()=>pointCameraAt(target),250);return;}
   let target;const resident=perspective===1;
   if(resident){
     const observer=currentObserver(),rect=container.getBoundingClientRect();
@@ -479,10 +505,24 @@ container.addEventListener('click',e=>{
 container.addEventListener('dblclick',e=>{
   e.preventDefault();clearTimeout(clickTimer);sim.aimAt(null);
   if(suppressClick)return;
+  if(scripted){
+    if(perspective!==0)return;
+    try{placeStoryCamera(groundPoint(e));}catch(error){parent.postMessage({type:'flatland-camera-error',message:error.message},location.origin);}
+    return;
+  }
   const target=groundPoint(e);
   if(target){markTarget(target);toast(sim.relocate(target)?'观察者已移动到这里':'角色轮廓会与墙或居民重叠，请选择空地');}
 });
+container.addEventListener('contextmenu',e=>{
+  if(!scripted)return;
+  e.preventDefault();clearTimeout(clickTimer);container.focus({preventScroll:true});pointCameraAt(cameraTarget(e));
+});
 addEventListener('blur',()=>clearTimeout(clickTimer));
+if(scripted){
+  let lastInteraction=0;
+  const interact=()=>{const now=performance.now();if(now-lastInteraction>150){lastInteraction=now;parent.postMessage({type:'flatland-story-interaction'},location.origin);}};
+  container.addEventListener('pointermove',interact);container.addEventListener('pointerdown',interact);addEventListener('keydown',interact);
+}
 function animate(now) {
   const delta=Math.min((now-previousTime)/1000,.08);previousTime=now;accumulator+=delta;
   const held=(...codes)=>codes.some(c=>keys.has(c))?1:0;
@@ -539,11 +579,11 @@ function animate(now) {
     let mesh=entityMeshes.get(e.id);
     mesh??=addMesh(e);const pos=e.body.translation();mesh.position.set(pos.x,pos.y,PLANE_HEIGHT-shapeHeight/2);mesh.rotation.z=e.body.rotation();mesh.scale.z=shapeHeight;
     const visible=updateDeathEffect(mesh,e,now,deathAnimation&&!reducedMotion.matches);
-    mesh.visible=(e!==sim.player||t===0)&&visible;
+    mesh.visible=(e!==sim.player||t===0)&&visible&&e.storyVisible!==false;
     mesh.children.forEach(outline=>{outline.visible=!residentView;});
     if(mesh.visible)updateOverviewLight(mesh,p);
   }
-  cone.position.set(p.x,p.y,.012);cone.visible=t<.75;
+  observerGuide.position.set(p.x,p.y,PLANE_HEIGHT);cone.visible=(!scripted||storyObserverSelected)&&t<.75;
   const guideExtent=maskRadius.value>0?maskRadius.value:topDistance*2*Math.tan(observer.fov/2)+Math.hypot(p.x-centre.x,p.y-centre.y);
   for(const {line,screenX} of sightGuides){
     const d=sightDirection(observer,screenX),positions=line.geometry.attributes.position;
@@ -551,9 +591,9 @@ function animate(now) {
     // Direction changes can move a guide outside its previous culling bounds.
     line.geometry.computeBoundingSphere();line.computeLineDistances();
   }
-  rangeCircle.visible=t===0&&maskRadius.value>0&&$('show-range').checked;
-  rangeCircle.position.set(p.x,p.y,.012);rangeCircle.scale.setScalar(maskRadius.value);
-  ring.position.set(p.x,p.y,.08);ring.visible=t===0;
+  rangeCircle.visible=!scripted&&t===0&&maskRadius.value>0&&$('show-range').checked;
+  rangeCircle.scale.setScalar(maskRadius.value);
+  ring.visible=(!scripted||storyObserverSelected)&&t===0;
   if(sim.walkTarget){markTarget(sim.walkTarget);}
   targetMarker.visible=t===0&&now<targetMarkerUntil;
   targetMarker.scale.setScalar(canvasWidth/width*5);
@@ -561,7 +601,7 @@ function animate(now) {
   for(const {el,position} of labelElements){const pos=position.clone().project(camera);el.style.left=`${(pos.x*.5+.5)*width}px`;el.style.top=`${(-pos.y*.5+.5)*height}px`;}
   $('sight-display').hidden=!residentView;
   $('minimap-panel').hidden=!residentView;document.body.classList.toggle('immersed',t>.7);
-  sightPreview.hidden=t!==0;
+  sightPreview.hidden=scripted||t!==0;
   if(sightPreview.hidden&&previewBounds){previewBounds=null;$('labels').style.clipPath='';}
   if(residentView)drawMini(observer);
   renderer.info.reset();
@@ -574,8 +614,50 @@ function animate(now) {
   toastTime-=delta;if(toastTime<=0)$('toast').classList.remove('visible');
   requestAnimationFrame(animate);
 }
-$('loading').remove();container.focus({preventScroll:true});requestAnimationFrame(animate);
+$('loading').remove();if(!scripted)container.focus({preventScroll:true});requestAnimationFrame(animate);
+let storyScript,storyFrame;
+function seekStory(time){
+  if(!storyScript)throw new Error('尚未载入故事');
+  storyFrame=sampleStory(storyScript,time);sim.applyScriptFrame(storyFrame);
+  for(const e of sim.entities){
+    const mesh=entityMeshes.get(e.id);
+    if(e.storyId&&mesh&&mesh.userData.storyPaint!==e.edgeColors.join(',')){updateMeshPaint(mesh,e);mesh.userData.storyPaint=e.edgeColors.join(',');}
+  }
+  return {time:storyFrame.time,actIndex:storyFrame.actIndex,ended:storyFrame.ended};
+}
 connectStudio('world',{
+  ...(scripted?{story:{
+    load(text){
+      const next=parseStory(text);
+      if(next.scene!==layout)throw new Error('故事场景与当前世界不一致，请重新载入场景');
+      storyScript=next;storyObserverSelected=false;sim.setScriptActors(next.actors,next.observer,rules.paintStyle);seekStory(0);fitOverview();
+      // Frame every scripted destination once; the camera stays still during a move.
+      for(const actor of next.actors)for(const event of [{to:actor.position},...next.tracks.get(actor.id).position]){
+        const [x,y]=event.to,r=actor.size/2;
+        overviewBounds.expandByPoint(new THREE.Vector2(x-r,y-r));overviewBounds.expandByPoint(new THREE.Vector2(x+r,y+r));
+      }
+      if(!next.observer){
+        const centre=overviewBounds.getCenter(new THREE.Vector2());
+        const candidates=[{x:centre.x,y:overviewBounds.min.y-2},sim.home,{x:overviewBounds.max.x+2,y:centre.y}];
+        const eye=(layout==='house'?[sim.home,...candidates]:candidates).find(p=>!sim.occupied(p,.1))??sim.home;
+        sim.player.body.setTranslation(eye,true);sim.player.body.setRotation(Math.atan2(centre.y-eye.y,centre.x-eye.x),true);
+      }
+      const eye=sim.player.body.translation();
+      for(const offset of [-.6,.6])overviewBounds.expandByPoint(new THREE.Vector2(eye.x+offset,eye.y+offset));
+      storyObserverSelected=true;
+      return {title:next.title,duration:next.duration};
+    },
+    seek:seekStory,
+    beginViewpoint(){setPerspective(0);perspective=0;},
+    observeAt(x,y){
+      if(![x,y].every(v=>Number.isFinite(v)&&v>=0&&v<=1))throw new Error('请在画面内选择观察点');
+      const rect=container.getBoundingClientRect(),p=groundPoint({clientX:rect.left+x*rect.width,clientY:rect.top+y*rect.height});
+      placeStoryCamera(p);
+      const centre=overviewBounds.getCenter(new THREE.Vector2());
+      pointCameraAt(centre);return {x:p.x,y:p.y};
+    },
+    snapshot:()=>storyFrame?structuredClone(storyFrame):null,
+  }}:{}),
   configure(values){
     if(Object.hasOwn(values,'pathfinding'))sim.setPathfinding(values.pathfinding);
     if(Object.hasOwn(values,'residentKilling'))sim.setResidentKilling(values.residentKilling);
@@ -594,7 +676,8 @@ connectStudio('world',{
     for(const [material,key] of [['resident','residentEmission'],['house','houseEmission']])if(Object.hasOwn(values,key))rules.materials={...rules.materials,[material]:{...rules.materials[material],emission:values[key]}};
   },
   snapshot:()=>({status:$('performance').textContent,position:$('coordinates').textContent,observer:{...sim.player.body.translation(),angle:sim.player.body.rotation()},walkTarget:sim.walkTarget,pathfinding:sim.pathfinding,residentKilling:sim.residentKilling,deathAnimation,targetMarker:{visible:targetMarker.visible,x:targetMarker.position.x,y:targetMarker.position.y},lightingUpdates,observerScreen:new THREE.Vector3(overviewEye.value.x,overviewEye.value.y,PLANE_HEIGHT).project(camera).toArray().slice(0,2),layout,projection,canvasExtent:{width:canvasWidth,height:canvasHeight},overviewZoom,perspective:targetPerspective,cameraProgress:perspective,
-    rangeGuide:{visible:rangeCircle.visible,radius:rangeCircle.scale.x,x:rangeCircle.position.x,y:rangeCircle.position.y,rayLength:Math.hypot(sightGuides[0].line.geometry.attributes.position.getX(1),sightGuides[0].line.geometry.attributes.position.getY(1))},
+    rangeGuide:{visible:rangeCircle.visible,radius:rangeCircle.scale.x,x:observerGuide.position.x,y:observerGuide.position.y,rayLength:Math.hypot(sightGuides[0].line.geometry.attributes.position.getX(1),sightGuides[0].line.geometry.attributes.position.getY(1))},
+    guideOrigins:{eye:[overviewEye.value.x,overviewEye.value.y,PLANE_HEIGHT],ring:ring.getWorldPosition(new THREE.Vector3()).toArray(),range:rangeCircle.getWorldPosition(new THREE.Vector3()).toArray(),rays:sightGuides.map(({line})=>line.localToWorld(new THREE.Vector3().fromBufferAttribute(line.geometry.attributes.position,0)).toArray())},
     mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.filter(e=>e.state!=='dead').length,wandering:sim.wandering,
     deathEffects:{active:[...entityMeshes.values()].filter(m=>m.userData.death).length,visible:[...entityMeshes.values()].filter(m=>m.userData.deathSeen&&m.visible).length},
     optics:{displayEnhancement:rules.contour>0&&rules.detailGain>0,detailGain:rules.detailGain,detailStyle:rules.detailStyle??'sharp',visionEffect:rules.visionEffect,scatterDistance:rules.scatterDistance,scatterCurve:rules.scatterCurve,exposure:rules.exposure,fog:rules.fog,attenuationMode:rules.attenuationMode,attenuationCurve:rules.attenuationCurve,attenuationDistance:rules.attenuationDistance,attenuationFloor:rules.attenuationFloor,residentEmission:rules.materials.resident.emission,houseEmission:rules.materials.house.emission},

@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node tests/verify.mjs && node tests/verify-characters.mjs && node tests/verify-optics.mjs && node tests/verify-navigation.mjs && node tests/verify-behavior.mjs"
+    "test": "node tests/verify.mjs && node tests/verify-characters.mjs && node tests/verify-optics.mjs && node tests/verify-navigation.mjs && node tests/verify-behavior.mjs && node tests/verify-welcome.mjs && node tests/verify-story-script.mjs"
   },
   "keywords": [],
   "author": "",

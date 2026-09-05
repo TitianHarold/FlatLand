@@ -1,12 +1,24 @@
-# FlatLand · 平面国场景工作台
+# FlatLand · 平面国
 
-用同一套镜头、发光、视野与行为配置，调试房屋、色彩检阅场、星野和同心圆场景。
+两个并列模式：故事模式浏览和播放故事；场景工作台实时调整镜头、发光、视野与行为配置。故事由 Agent 编排，本地即可预览，确认后在本地播放器点击“上传故事”，将检查与上传 Prompt 交给 Agent，通过 PR 提交。创作流程和提交范围见 [AGENTS.md](AGENTS.md)。
+
+## 创作故事
+
+复制下面的 Prompt 给你的 Agent：
+
+```text
+仓库：https://github.com/TitianHarold/FlatLand
+请你按照这个仓库中的 AGENTS.md 帮我部署好这个项目，并开始故事创作模式。
+```
 
 ## 目录
 
 ```text
 web/                       网页工程
-  index.html               网站首页，进入场景工作台
+  index.html               网站首页，进入欢迎页
+  welcome.html             入场动画、故事列表与创作 Prompt
+  storyboard.html          故事播放器，无创作或调参面板
+  stories/                 每部故事的剧本、播放数据与素材
   studio.html              场景工作台
   world.html               共用 3D 场景
   character-lab.html        角色实验室
@@ -33,7 +45,9 @@ npm ci
 npm run dev -- --port 5173 --strictPort
 ```
 
-打开 [场景工作台](http://127.0.0.1:5173/studio.html)。浏览器配置仍使用原来的保存键；同一域名下已有配置会继续恢复。
+打开 [故事列表](http://127.0.0.1:5173/welcome.html#stories) 或 [场景工作台](http://127.0.0.1:5173/studio.html)。新建、未提交的故事可直接在本地播放，不需要先创建 PR。Story ID 由 Agent 自动生成并在迭代中保留。新建故事卡片会检查本地故事的未提交改动；先保存当前故事，再开始下一部。浏览器配置仍使用原来的保存键；同一域名下已有配置会继续恢复。
+
+播放器继承工作台已保存的 FOV、投影方式、一维窗口高度、展开状态与配色。点击工作台的“导出配置”可复制完整 JSON 给 Agent，并保存到故事目录的 `settings.json`，让该故事在其他浏览器也采用相同效果。也可只保留需要覆盖的字段：未指定的字段继续继承工作台。角色或动作明确指定的颜色优先于配色方案；关闭染色时仍显示无色。
 
 镜头选项使用「画面未矫正」与「画面矫正」：前者按直线接收面投影，匀速转头时边缘移动更快；后者按角度均匀展开，匀速转头时画面匀速移动。两者内部参数仍为 `perspective` 与 `equidistant`，兼容已保存的选择。
 
@@ -53,13 +67,15 @@ npm run preview
 
 启动开发服务后，打开 [浏览器渲染检查](http://127.0.0.1:5173/tests/verify-render.html) 验证实际 WebGL 画面与四场景通用参数。检查会修改当前域名下的测试配置，使用独立端口可与日常调试隔离。
 
+[摄像机检查](http://127.0.0.1:5173/tests/verify-camera.html) 验证四场景的镜头标记对齐，以及故事中的单击转向、双击换位、拖动和键盘控制，不改写保存的工作台配置。
+
 `npm run build` 只输出网页到 `web/dist/`；文档、测试页和开发依赖不进入发布内容。页面与资源使用相对路径，支持 GitHub Pages 的 `/FlatLand/` 子路径。
 
 ## GitHub Pages
 
 仓库：[TitianHarold/FlatLand](https://github.com/TitianHarold/FlatLand)。
 
-网站入口：[平面国场景工作台](https://titianharold.github.io/FlatLand/)。
+网站入口：[平面国](https://titianharold.github.io/FlatLand/)。
 
 Pages 的发布来源使用 **GitHub Actions**。推送 `main` 上的网页代码或部署配置后，工作流自动执行测试、构建，并发布 `web/dist/`；也可以在 **Actions → GitHub Pages → Run workflow** 手动重新发布。
 

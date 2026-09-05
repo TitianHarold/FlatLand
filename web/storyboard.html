@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#000000"><title>平面国 · 故事</title>
+</head>
+<body>
+  <header class="app-header"><a class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg><span>平面国<small>FLATLAND</small></span></a><nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories" aria-current="page">故事</a><a href="./studio.html">场景工作台</a></nav></header>
+  <main id="theatre" class="theatre controls-visible" tabindex="-1">
+    <header class="story-heading player-chrome"><div><h1 id="story-title">未选择故事</h1><p id="story-description" hidden></p></div><div class="story-actions"><button id="upload-story" type="button" aria-haspopup="dialog" hidden>上传故事</button><button id="fullscreen" class="icon-button" type="button" aria-label="全屏" title="全屏"><img id="fullscreen-icon" src="./icons/maximize.svg" alt=""></button></div><span id="source-label" hidden></span></header>
+    <p id="error" class="error" role="alert" hidden></p>
+    <section class="stage" aria-label="故事画面">
+      <div id="world-frame"></div>
+      <button id="point-picker" type="button" aria-label="选择观察点，方向键移动，回车确认" hidden><span id="pick-hint">点击画面选择观察点</span><span id="point-cursor" aria-hidden="true"></span></button>
+      <div id="stage-empty" class="stage-message"><a href="./welcome.html#stories">选择故事</a></div>
+      <div id="stage-loading" class="stage-message" role="status" hidden><h2>正在加载</h2><p id="loading-text">准备角色与场景…</p><button id="retry" hidden>重试</button></div>
+      <div id="stage-caption" hidden><span id="scene-label"></span><span id="view-label"></span></div>
+    </section>
+    <section class="playback player-chrome" aria-label="播放控制">
+      <div class="transport">
+        <button id="play" class="icon-button" type="button" aria-label="播放" title="播放" disabled><img id="play-icon" src="./icons/play.svg" alt=""></button>
+        <button id="replay" class="icon-button" type="button" aria-label="重播" title="重播" disabled><img src="./icons/rotate-ccw.svg" alt=""></button>
+        <button id="forward" class="icon-button" type="button" aria-label="快进 10 秒" title="快进 10 秒" disabled><img src="./icons/fast-forward.svg" alt=""></button>
+        <input id="timeline" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="故事播放进度">
+        <span id="play-status" class="sr-only" role="status">未载入</span><output id="time">00:00 / 00:00</output>
+      </div>
+    </section>
+    <nav id="chapters" class="chapters" aria-label="故事章节"><span id="act-count" hidden></span><p id="act-empty" hidden></p><ol id="act-list"></ol></nav>
+    <aside class="view-controls" aria-label="观看视角">
+      <button id="view-overview" type="button" aria-label="3D 俯视" title="3D 俯视" aria-pressed="true" disabled>3D</button>
+      <input id="view-angle" type="range" min="0" max="100" step="1" value="0" disabled aria-label="摄像机角度" aria-valuetext="90°，俯视">
+      <button id="view-resident" type="button" aria-label="2D 居民视角" title="2D 居民视角" aria-pressed="false" disabled>2D</button>
+      <output id="view-angle-value" for="view-angle">90°</output>
+      <button id="choose-observer" class="icon-button" type="button" aria-label="选择观察点" title="选择观察点" disabled><img id="observer-icon" src="./icons/crosshair.svg" alt=""></button>
+    </aside>
+    <p id="view-status" role="status"></p>
+    <section class="act-text" aria-labelledby="act-title"><span id="act-number" hidden></span><h2 id="act-title"></h2><p id="act-body"></p></section>
+    <div id="chapter-transition" aria-hidden="true"><span id="transition-index"></span><span id="transition-title"></span></div>
+  </main>
+  <dialog id="upload-dialog" aria-labelledby="upload-title">
+    <div class="upload-heading"><h2 id="upload-title">上传故事</h2><button id="close-upload" type="button" aria-label="关闭上传提示">关闭</button></div>
+    <p>复制给 Agent，完成检查后创建 PR。</p>
+    <textarea id="upload-prompt" readonly rows="12" spellcheck="false" aria-label="上传故事 Prompt"></textarea>
+    <div class="upload-actions"><p id="upload-status" role="status"></p><button id="copy-upload" type="button">复制</button></div>
+  </dialog>
+  <script type="module" src="./src/storyboard.js"></script>
+</body>
+</html>

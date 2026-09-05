@@ -5,8 +5,9 @@ import {setCustomPaintStyle,setPaintMode,setWallColor} from './paint.js';
 // input handlers and simulation. Standalone lab pages keep their original UI.
 const embedded=new URLSearchParams(location.search).has('studio');
 if(embedded)document.documentElement.classList.add('studio-embedded');
+if(new URLSearchParams(location.search).has('storyboard'))document.documentElement.classList.add('story-playing');
 
-export function connectStudio(kind,{configure=()=>{},snapshot=()=>({})}={}) {
+export function connectStudio(kind,{configure=()=>{},snapshot=()=>({}),story}={}) {
   if(!embedded)return;
   document.body.dataset.lab=kind;
   window.flatlandStudio={
@@ -29,6 +30,7 @@ export function connectStudio(kind,{configure=()=>{},snapshot=()=>({})}={}) {
       configure(values);
     },
     snapshot,
+    ...(story?{story}:{}),
     key(code,pressed){document.dispatchEvent(new KeyboardEvent(pressed?'keydown':'keyup',{code,bubbles:true}));},
   };
   parent.postMessage({type:'flatland-studio-ready',kind},location.origin);

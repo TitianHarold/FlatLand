@@ -1,3 +1,4 @@
+@import './ui-theme.css';
 html.studio-embedded body[data-lab=world] header,
 html.studio-embedded body[data-lab=world] .intro,
 html.studio-embedded body[data-lab=world] .controls,
@@ -7,7 +8,7 @@ html.studio-embedded body[data-lab=world] #touch-controls{display:none!important
 html.studio-embedded body[data-lab=world] .observation-panel{top:auto;bottom:18px;right:18px;width:225px;background:#141a19ed;border:1px solid #343d36;box-shadow:none}
 html.studio-embedded body[data-lab=world] .panel-heading,
 html.studio-embedded body[data-lab=world] .observation-panel p,
-html.studio-embedded body[data-lab=world] .sight-directions{color:#abb7a7}
+html.studio-embedded body[data-lab=world] .sight-directions{color:var(--ui-muted)}
 html.studio-embedded body[data-lab=world] .panel-heading button{color:#d4ddca;border-color:#454c41}
 html.studio-embedded body[data-lab=world] #minimap-panel{width:175px}
 html.studio-embedded body[data-lab=world] #minimap{width:105px;height:105px;margin:auto}
@@ -53,3 +54,5 @@ html.stars-only.studio-embedded .crowd-heading>div,html.stars-only.studio-embedd
 html.stars-only.studio-embedded .crowd-heading{position:absolute;right:18px;bottom:18px;margin:0;pointer-events:none}
 html.stars-only.studio-embedded #crowd-map{width:90px;height:90px}
 html.stars-only.studio-embedded #crowd-view{flex:1;min-height:180px}
+
+html.story-playing .observation-panel,html.story-playing #scale-bar,html.story-playing #toast{display:none!important}

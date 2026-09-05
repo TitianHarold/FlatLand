@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="浏览平面国故事，使用 Agent 创作，并在场景工作台确认效果。">
+  <title>平面国 · FLATLAND</title>
+  <link rel="stylesheet" href="./src/welcome.css">
+</head>
+<body>
+  <section id="entrance" class="entrance" aria-labelledby="entrance-title" hidden>
+    <header class="entrance-header">
+      <span class="edition">FLATLAND</span>
+      <a id="skip-entrance" class="skip-link" href="#stories">跳过入场 <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="entrance-composition">
+      <canvas id="entrance-canvas" aria-hidden="true"></canvas>
+      <h1 id="entrance-title" class="sr-only">FLATLAND</h1>
+    </div>
+  </section>
+
+  <div id="stories" class="stories-shell">
+    <header class="app-header">
+      <a class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg>
+        <span>平面国<small>FLATLAND</small></span>
+      </a>
+      <nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories" aria-current="page">故事</a><a href="./studio.html">场景工作台</a></nav>
+    </header>
+    <main>
+      <section class="story-intro" aria-labelledby="stories-title">
+        <h1 id="stories-title" tabindex="-1">故事</h1>
+        <button id="replay-entrance" class="replay-button" hidden><span aria-hidden="true">↺</span> 重播入场</button>
+      </section>
+      <section id="story-list" class="story-list" aria-label="可观看的故事" hidden></section>
+      <button id="create-story" class="new-story-card" type="button" aria-haspopup="dialog" hidden><span class="create-icon"><img src="./icons/plus.svg" alt=""></span><span>创作故事</span></button>
+      <section id="story-empty" class="empty-stage" aria-labelledby="empty-title">
+        <div class="empty-art" aria-hidden="true">
+          <svg viewBox="0 0 480 210"><path class="stage-line" d="M20 158H460"/><g class="resident resident-blue"><path d="m154 134 16 12-6 19h-20l-6-19Z"/></g><g class="resident resident-gold"><path d="m231 117 26 45h-52Z"/></g><g class="resident resident-pink"><path d="m306 142 14 8v16l-14 8-14-8v-16Z"/></g><path class="small-trail" d="M66 158h59m215 0h74"/></svg>
+        </div>
+        <h2 id="empty-title">暂无故事</h2>
+      </section>
+      <section id="creation-panel" class="creation-prompt" aria-labelledby="prompt-label">
+        <div class="prompt-heading"><label id="prompt-label" for="creation-prompt">复制如下 Prompt</label><button id="copy-prompt" type="button">复制</button><button id="close-prompt" type="button" aria-label="关闭创作提示" hidden>关闭</button></div>
+        <textarea id="creation-prompt" readonly rows="3" spellcheck="false">仓库：https://github.com/TitianHarold/FlatLand
+请你按照这个仓库中的 AGENTS.md 帮我部署好这个项目，并开始故事创作模式。</textarea>
+        <p id="copy-status" class="copy-status" role="status"></p>
+      </section>
+      <section id="draft-notice" class="creation-prompt" aria-labelledby="draft-title" hidden><h2 id="draft-title">先保存当前故事</h2><p id="draft-message">请先让 Agent 完成当前故事的 Commit 或 PR，再新建故事。</p><a id="continue-story" hidden>继续当前故事</a><button id="close-draft" type="button" hidden>关闭</button></section>
+    </main>
+  </div>
+  <dialog id="creation-dialog" aria-labelledby="prompt-label"></dialog>
+  <script type="module" src="./src/welcome.js"></script>
+</body>
+</html>
