@@ -1,48 +1,21 @@
-/* Shared neutral controls; scene pigments remain independent of UI colours. */
-html[data-ui-theme]{
-  color-scheme:dark;
-  --ui-background:#000;--ui-panel:#111;--ui-header:#000;
-  --ui-control:#1b1b1b;--ui-plot:#202020;--ui-selected:#343434;
-  --ui-line:#383838;--ui-text:#ededed;--ui-muted:#a0a0a0;--ui-accent:#e5e5e5;
-  --ui-hover:#292929;--ui-selected-text:#fff;--ui-selected-line:#929292;
-  --ui-panel-heading:#242424;--ui-input-line:#595959;--ui-track:#555;
-  --ui-grid:#464646;--ui-shadow:0 2px 5px #0002,0 10px 24px #0001;
-  --ui-inset:inset 0 1px 0 #ffffff06;--ui-icon-filter:invert(1);
-  --stage-background:#000;--stage-ink:#e6e6e6;
-}
+@import './ui-theme.css';
+/* One selection colour per theme. Scene pigments use separate stage settings. */
+html[data-ui-theme]{color-scheme:dark}
 html[data-ui-theme=light]{
   color-scheme:light;
   --ui-background:#fafafa;--ui-panel:#fff;--ui-header:#fafafa;
-  --ui-control:#f1f1f1;--ui-plot:#ededed;--ui-selected:#dedede;
-  --ui-line:#d1d1d1;--ui-text:#202020;--ui-muted:#696969;--ui-accent:#303030;
-  --ui-hover:#e8e8e8;--ui-selected-text:#111;--ui-selected-line:#888;
-  --ui-panel-heading:#f5f5f5;--ui-input-line:#b4b4b4;--ui-track:#aaa;
-  --ui-grid:#bcbcbc;--ui-shadow:0 2px 4px #00000010,0 8px 20px #00000008;
-  --ui-inset:inset 0 1px 0 #fff;--ui-icon-filter:none;
+  --ui-control:#f5f5f5;--ui-plot:#f1f1f1;--ui-hover:#ededed;
+  --ui-line:#ddd;--ui-input-line:#b8b8b8;--ui-track:#aaa;--ui-grid:#ccc;
+  --ui-text:#202020;--ui-muted:#676767;
+  --ui-accent:#326b49;--ui-selected:#e6eee8;--ui-selected-text:#28563b;--ui-on-accent:#fff;
+  --ui-overlay:#fffffff0;--ui-overlay-soft:#ffffffd9;--ui-icon-filter:none;
   --stage-background:#fff;--stage-ink:#242424;
 }
-html[data-ui-theme] .app-header{background:var(--ui-header)}
-html[data-ui-theme] .app-brand svg{stroke:var(--ui-text)}
-html[data-ui-theme] .mode-nav{background:transparent;border-color:transparent;border-radius:0}
-html[data-ui-theme] .mode-nav a{position:relative;border-radius:0}
-html[data-ui-theme] .mode-nav a[aria-current=page]{background:transparent;color:var(--ui-text);box-shadow:none}
-html[data-ui-theme] .mode-nav a[aria-current=page]::after{content:'';position:absolute;bottom:0;left:calc(50% - 12px);width:24px;height:1px;background:currentColor}
-html[data-ui-theme] .mode-nav a:hover{background:var(--ui-hover)}
-html[data-ui-theme] .app-header-actions{gap:10px}
-@media(min-width:641px){
-  html[data-ui-theme]{--ui-header-height:80px}
-  html[data-ui-theme] .app-header{padding-inline:clamp(18px,3.2vw,48px)}
-  html[data-ui-theme] .app-brand>span{font-size:20px}
-  html[data-ui-theme] .app-brand svg{width:32px;height:32px}
-  html[data-ui-theme] .mode-nav a{font-size:17px}
-}
-html[data-ui-theme] .app-brand small{display:none}
-.app-header .theme-cycle{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;padding:0;border:1px solid var(--ui-selected-line);border-radius:50%;background:transparent;color:var(--ui-text);cursor:pointer;touch-action:manipulation}
+.app-header .theme-cycle{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;min-height:0;padding:0;border:1px solid var(--ui-input-line);border-radius:50%;background:transparent;color:var(--ui-text);cursor:pointer;touch-action:manipulation}
 .theme-cycle img,.theme-auto{display:none;grid-area:1/1}
 .theme-cycle img{width:18px;height:18px;filter:var(--ui-icon-filter)}
-.theme-auto{font:18px -apple-system,BlinkMacSystemFont,sans-serif}
+.theme-auto{font:18px var(--ui-font)}
 html[data-ui-theme-mode=light] .theme-sun,html[data-ui-theme-mode=dark] .theme-moon,html[data-ui-theme-mode=auto] .theme-auto{display:block}
 .app-header .theme-cycle:hover{background:var(--ui-hover);border-color:var(--ui-text)}
 .app-header .theme-cycle:focus-visible{outline:2px solid var(--ui-accent);outline-offset:4px}
-@media(max-width:640px){html[data-ui-theme] .app-header-actions{gap:8px}.app-header .theme-cycle{width:32px;height:32px}}
-@media(max-width:380px){html[data-ui-theme] .app-brand>span{font-size:14px}html[data-ui-theme] .app-brand svg{width:22px}html[data-ui-theme] .app-brand{gap:6px}}
+@media(max-width:640px){.app-header .theme-cycle{width:32px;height:32px}}

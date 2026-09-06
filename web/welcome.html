@@ -11,9 +11,13 @@
 </head>
 <body>
   <section id="entrance" class="entrance" aria-labelledby="entrance-title" hidden>
-    <header class="entrance-header">
-      <span class="edition">FLATLAND</span>
-      <a id="skip-entrance" class="skip-link" href="#stories">跳过入场 <span aria-hidden="true">↗</span></a>
+    <header class="app-header entrance-header">
+      <a class="app-brand" href="./welcome.html" aria-label="平面国 · 欢迎页">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg>
+        <span>平面国<small>FLATLAND</small></span>
+      </a>
+      <nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories">故事</a><a href="./studio.html">游乐场</a></nav>
+      <div class="app-header-actions"><a id="skip-entrance" class="skip-link" href="#stories">跳过入场</a><button class="theme-cycle" data-ui-theme-toggle type="button" aria-label="界面主题：自动跟随系统；点击切换为亮色" title="自动跟随系统"><img class="theme-sun" src="./icons/sun.svg" alt=""><img class="theme-moon" src="./icons/moon.svg" alt=""><span class="theme-auto" aria-hidden="true">A</span></button></div>
     </header>
     <div class="entrance-composition">
       <canvas id="entrance-canvas" aria-hidden="true"></canvas>
@@ -23,7 +27,7 @@
 
   <div id="stories" class="stories-shell">
     <header class="app-header">
-      <a id="replay-logo" class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事">
+      <a id="replay-logo" class="app-brand" href="./welcome.html" aria-label="平面国 · 欢迎页">
         <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg>
         <span>平面国<small>FLATLAND</small></span>
       </a>

@@ -135,7 +135,7 @@ function startEntrance(){
 document.querySelector('#skip-entrance').addEventListener('click',event=>{event.preventDefault();showStories({focus:true});});
 replay.addEventListener('click',event=>{event.preventDefault();startEntrance();});
 function updateMotion(){
-  replay.title=motion.matches||!ctx?'选择故事':'重播入场';
+  replay.title=motion.matches||!ctx?'欢迎页':'重播入场';
   if(motion.matches&&active)showStories({focus:true});
 }
 motion.addEventListener('change',updateMotion);
