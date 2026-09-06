@@ -13,7 +13,7 @@ const clock=seconds=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String
 const storyId=new URLSearchParams(location.search).get('story');
 const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let cursor={x:.5,y:.5};
-let script,scriptText,storyPreset,source,api,frame,loadTimer,time=0,playing=false,previous=0,actIndex=-1,animation=0;
+let script,scriptText,storyPreset,source,api,frame,loadTimer,time=0,playing=false,playbackRate=1,previous=0,actIndex=-1,animation=0;
 function report(error,target='error'){$(target).textContent=error.message||String(error);$(target).hidden=false;}
 function setPlaying(value){
   playing=Boolean(value&&api);previous=performance.now();showControls();
@@ -32,7 +32,10 @@ function display(sample){
     $('act-title').textContent=act.title;$('act-body').textContent=act.text;
     $('transition-index').textContent=String(actIndex+1).padStart(2,'0');$('transition-title').textContent=act.title;
     chapterAnimation?.cancel();
-    if(!reducedMotion.matches)chapterAnimation=$('chapter-transition').animate([{opacity:0},{opacity:1,offset:.15},{opacity:1,offset:.7},{opacity:0}],{duration:1800,easing:'ease-out'});
+    if(!reducedMotion.matches){
+      chapterAnimation=$('chapter-transition').animate([{opacity:0},{opacity:1,offset:.15},{opacity:1,offset:.7},{opacity:0}],{duration:1800,easing:'ease-out'});
+      chapterAnimation.playbackRate=playbackRate;
+    }
     [...$('act-list').querySelectorAll('button')].forEach((button,i)=>{
       if(i===actIndex){button.setAttribute('aria-current','step');button.scrollIntoView({block:'nearest',inline:'center'});}else button.removeAttribute('aria-current');
     });
@@ -56,16 +59,18 @@ function seek(next){
   // The player owns transitions. Hold story time while the old picture fades,
   // seek only at black, then reveal the new chapter before advancing again.
   sceneAnimation=stage.animate([{opacity},{opacity:0}],{duration:220*opacity,easing:'ease-in',fill:'forwards'});
+  sceneAnimation.playbackRate=playbackRate;
   sceneAnimation.onfinish=()=>{
     stage.style.opacity='0';sceneAnimation.cancel();
     try{showFrame(target);}catch(error){failStage(error);return;}
     sceneAnimation=stage.animate([{opacity:0},{opacity:1}],{duration:340,easing:'ease-out',fill:'forwards'});
+    sceneAnimation.playbackRate=playbackRate;
     sceneAnimation.onfinish=()=>{clearSceneFade();previous=performance.now();};
   };
 }
 function failStage(error){
   clearTimeout(loadTimer);clearSceneFade();api=null;setPlaying(false);
-  $('play').disabled=$('replay').disabled=$('forward').disabled=$('timeline').disabled=true;
+  $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
   $('point-picker').hidden=true;
   for(const button of $('act-list').querySelectorAll('button'))button.disabled=true;
@@ -87,7 +92,7 @@ function loadText(text,label){
     }
     button.onclick=()=>{seek(act.start);setPlaying(true);};item.append(button);$('act-list').append(item);
   });
-  $('play').disabled=$('replay').disabled=$('forward').disabled=$('timeline').disabled=true;
+  $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
   $('point-picker').hidden=true;
   $('timeline').max=script.duration;display({time:0,actIndex:0});
@@ -116,7 +121,7 @@ addEventListener('message',event=>{
     api.configure({display:preset.view.display});
     api.story.load(scriptText);clearTimeout(loadTimer);
     $('stage-loading').hidden=true;$('stage-caption').hidden=false;
-    $('play').disabled=$('replay').disabled=$('forward').disabled=$('timeline').disabled=false;
+    $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=false;
     $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=false;
     $('view-angle').disabled=false;setView(90-preset.view.dimension*.9);$('upload-story').hidden=!local;
     for(const button of $('act-list').querySelectorAll('button'))button.disabled=false;
@@ -127,6 +132,14 @@ $('retry').onclick=()=>loadText(scriptText,source);
 $('play').onclick=()=>{if(time===script.duration)seek(0);setPlaying(!playing);};
 $('replay').onclick=()=>{seek(0);setPlaying(true);};
 $('forward').onclick=()=>{seek(Math.min(time+10,script.duration));showControls();};
+$('speed').onclick=()=>{
+  playbackRate=playbackRate===1?3:1;previous=performance.now();
+  $('speed').textContent=`${playbackRate}×`;
+  const label=`播放速度 ${playbackRate} 倍，点击切换为 ${playbackRate===1?3:1} 倍`;
+  $('speed').setAttribute('aria-label',label);$('speed').title=label;
+  sceneAnimation?.updatePlaybackRate(playbackRate);chapterAnimation?.updatePlaybackRate(playbackRate);
+  showControls();
+};
 $('timeline').oninput=()=>{setPlaying(false);seek(Number($('timeline').value));setPlaying(false);};
 function setView(angle){
   if(!api)return;
@@ -213,9 +226,12 @@ document.addEventListener('fullscreenchange',()=>{
   $('fullscreen-icon').src=`./icons/${full?'minimize':'maximize'}.svg`;
   $('fullscreen').setAttribute('aria-label',full?'退出全屏':'全屏');$('fullscreen').title=full?'退出全屏':'全屏';showControls();
 });
-function tick(now){
+function tick(){
+  // Use the same clock as clicks and fade completion. A queued rAF timestamp
+  // can precede either event and would otherwise rewind across an act boundary.
+  const now=performance.now();
   if(playing&&!sceneAnimation){
-    try{seek(Math.min(script.duration,time+(now-previous)/1000));}catch(error){failStage(error);}
+    try{seek(Math.min(script.duration,time+(now-previous)/1000*playbackRate));}catch(error){failStage(error);}
   }
   previous=now;animation=playing?requestAnimationFrame(tick):0;
 }

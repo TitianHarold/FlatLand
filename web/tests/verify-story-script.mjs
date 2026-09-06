@@ -113,7 +113,7 @@ async function playerSettings(override){
   const element=tag=>({tag,hidden:false,disabled:false,children:[],style:{setProperty(k,v){this[k]=v;}},classList:{classes:new Set(),add(c){this.classes.add(c);},remove(c){this.classes.delete(c);}},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];},focus(){},scrollIntoView(options){this.scrollOptions=options;},addEventListener(){},
     append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
     querySelector(){return this.heading??=element('h2');},querySelectorAll(){return this.children.flatMap(child=>child.tag==='button'?[child]:child.querySelectorAll());},
-    showModal(){this.open=true;},close(){this.open=false;},animate(frames,options){return this.animation={frames,options,cancelled:false,cancel(){this.cancelled=true;}};}});
+    showModal(){this.open=true;},close(){this.open=false;},animate(frames,options){return this.animation={frames,options,cancelled:false,cancel(){this.cancelled=true;},updatePlaybackRate(rate){this.playbackRate=rate;}};}});
   const elements=new Map([...playerHtml.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],element('div')]));
   const keyCalls=[];
   const api={key(code,pressed){keyCalls.push([code,pressed]);},configure(v){Object.assign(values,v);},set(k,v){values[k]=v;},story:{load(){},seek(time){return sampleStory(story,time);}}};
@@ -132,6 +132,7 @@ async function playerSettings(override){
   assert.equal(elements.get('stage-loading').hidden,true);
   assert.equal(elements.get('play-icon').src,'./icons/pause.svg');
   assert.equal(elements.get('play-status').textContent,'播放中','Entering a loaded story starts playback automatically');
+  assert.equal(elements.get('speed').disabled,false,'Speed becomes available when the story is ready');
   elements.get('play').onclick();
   const cameraPlaced={origin:sandbox.location.origin,source:frame.contentWindow,data:{type:'flatland-camera-placed'}};
   events.message(cameraPlaced);assert.equal(elements.get('view-status').textContent,'W/S 前后 · A/D 转向 · Q/E 平移');
@@ -159,11 +160,16 @@ async function playerSettings(override){
   assert.equal(elements.get('timeline').value,6,'A chapter click seeks to its start');
   assert.equal(elements.get('play').title,'暂停','A chapter click immediately starts playback');
   const chapters=elements.get('act-list').children.map(item=>item.children[0]);
+  // A queued animation frame can predate a click or an animation's finish event.
+  now+=20;raf(now-30);finishFade();
+  assert.equal(elements.get('timeline').value,6.02,'A queued frame cannot rewind a freshly selected chapter');
   chapters[2].onclick();elements.get('play').onclick();finishFade();
   assert.equal(elements.get('timeline').value,12);assert.equal(elements.get('play-status').textContent,'已暂停','Pausing during a fade keeps the incoming chapter paused');
   chapters[0].onclick();const superseded=stage.animation;chapters[1].onclick();
   assert(superseded.cancelled&&superseded.onfinish===null,'A rapid chapter selection cannot apply a stale seek');
   finishFade();assert.equal(elements.get('timeline').value,6);assert.equal(stage.style.opacity,'1');
+  now+=20;raf(now-30);finishFade();
+  assert.equal(elements.get('timeline').value,6.02,'Playback uses elapsed wall time after the fade, never an older frame timestamp');
   elements.get('timeline').value=7;elements.get('timeline').oninput();
   assert(stage.animation.cancelled,'Seeking inside the same chapter does not add a transition');
   elements.get('timeline').value=5.9;elements.get('timeline').oninput();finishFade();elements.get('play').onclick();
@@ -171,7 +177,29 @@ async function playerSettings(override){
   now+=500;raf(now);assert.equal(elements.get('timeline').value,5.9,'The story clock holds throughout the transition');
   finishFade();assert(Math.abs(elements.get('timeline').value-6.1)<1e-9,'Fade time does not skip incoming story actions');
   elements.get('replay').onclick();finishFade();assert.equal(elements.get('timeline').value,0,'Replay fades back to the opening');
+  const speed=elements.get('speed');speed.onclick();
+  assert.equal(speed.textContent,'3×');assert.match(speed['aria-label'],/播放速度 3 倍/);
+  assert.equal(elements.get('timeline').value,0,'Changing speed does not seek');
+  now+=1000;raf(now-10);assert.equal(elements.get('timeline').value,3,'One wall second advances three story seconds');
+  chapters[1].onclick();const outgoing=stage.animation;
+  assert.equal(outgoing.playbackRate,3,'New fades use the current speed');
+  speed.onclick();assert.equal(speed.textContent,'1×');
+  assert.equal(stage.animation,outgoing);assert(!outgoing.cancelled,'Changing speed keeps the active fade continuous');
+  assert.equal(outgoing.playbackRate,1,'An active fade immediately follows a speed change');
+  outgoing.onfinish();const incoming=stage.animation,title=elements.get('chapter-transition').animation;
+  assert.equal(incoming.playbackRate,1);assert.equal(title.playbackRate,1);
+  speed.onclick();assert.equal(stage.animation,incoming);
+  assert.equal(incoming.playbackRate,3);assert.equal(title.playbackRate,3,'The chapter title follows the same speed');
+  finishFade();now+=1000;raf(now-10);assert.equal(elements.get('timeline').value,9);
+  speed.onclick();now+=1000;raf(now);assert.equal(elements.get('timeline').value,10,'Returning to 1x restores normal playback');
+  elements.get('play').onclick();speed.onclick();
+  assert.equal(elements.get('play-status').textContent,'已暂停');assert.equal(raf,null,'Changing speed while paused stays paused');
+  assert.equal(elements.get('timeline').value,10);
+  elements.get('replay').onclick();finishFade();assert.equal(elements.get('timeline').value,0,'Replay works at 3x');
+  now+=1000;raf(now);assert.equal(elements.get('timeline').value,3,'Replay preserves the chosen speed');
   reduced.matches=true;chapters[2].onclick();assert.equal(elements.get('timeline').value,12,'Reduced motion switches chapters immediately');
+  now+=3000;raf(now);assert.equal(elements.get('timeline').value,18,'Accelerated playback clamps to the story end');
+  assert.equal(elements.get('play-status').textContent,'播放结束');assert.equal(raf,null);
   reduced.matches=false;chapters[0].onclick();events.pagehide();
   assert(stage.animation.cancelled&&stage.animation.onfinish===null);assert.equal(stage.style.opacity,'1','Leaving the player clears the fade');
   assert.equal(presetReads,0,'Stories never read the playground preset');
@@ -182,7 +210,7 @@ const adopted=await playerSettings();
 assert.equal(adopted['field-angle'],defaults.view.fieldAngle);assert.equal(adopted['resident-window'],defaults.view.windowHeight);assert.equal(adopted.projection,defaults.view.projection);assert.equal(adopted['paint-style'],defaults.shared.paintStyle);
 const override=structuredClone(preset);override.state.view.fieldAngle=80;override.state.view.windowHeight=23;
 const overridden=await playerSettings(override);assert.equal(overridden['field-angle'],80);assert.equal(overridden['resident-window'],23);
-console.log('Story workflow: independent settings, chapter fades, pause/rapid seek/replay/reduced motion, observer controls, upload guidance and dirty-story detection passed.');
+console.log('Story workflow: independent settings, monotonic chapter playback, 1x/3x speed and fades, pause/rapid seek/replay/reduced motion, observer controls, upload guidance and dirty-story detection passed.');
 
 const partial={version:1,state:{view:{fieldAngle:80},shared:{coloring:false,exposure:24}}};
 const mergedPreset=readPreset(partial);

@@ -22,6 +22,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .playback{position:absolute;left:20px;right:20px;bottom:88px;z-index:4;max-width:380px;margin:auto;padding:4px 8px;background:var(--ui-overlay);border:1px solid var(--ui-line);border-radius:var(--ui-radius);backdrop-filter:blur(18px)}
 .transport{display:flex;align-items:center;gap:4px}.icon-button{display:grid;place-items:center;flex-shrink:0;width:44px;height:44px;padding:10px;border:0;background:transparent;border-radius:var(--ui-radius)}.icon-button img{display:block;width:20px;height:20px;filter:var(--ui-icon-filter);opacity:.85;pointer-events:none}.transport .icon-button{width:34px;height:34px;padding:8px}.transport .icon-button img{width:16px;height:16px;opacity:.8}.transport .icon-button:hover{background:var(--ui-control)}.transport output{flex-shrink:0;font:11px var(--ui-mono);color:var(--ui-muted);font-variant-numeric:tabular-nums;white-space:nowrap;margin:0 2px 0 5px}.story-actions{display:flex;align-items:center;gap:8px}.story-heading .icon-button{width:32px;height:32px;padding:8px;background:transparent}.story-heading .icon-button img{width:16px;height:16px}
 #timeline{display:block;flex:1;min-width:40px;width:80px;height:28px;margin:0;appearance:none;background:transparent;cursor:ew-resize;--progress:0%}
+#speed{font:12px var(--ui-mono);padding:0}
 #timeline::-webkit-slider-runnable-track{height:2px;border-radius:2px;background:linear-gradient(to right,var(--ui-accent) var(--progress),var(--ui-track) var(--progress))}#timeline::-webkit-slider-thumb{appearance:none;width:6px;height:6px;margin-top:-2px;border:0;border-radius:50%;background:var(--ui-text);opacity:0;transition:opacity .15s}#timeline:hover::-webkit-slider-thumb,#timeline:focus-visible::-webkit-slider-thumb{opacity:1}
 #timeline::-moz-range-track{height:2px;background:var(--ui-track);border-radius:2px}#timeline::-moz-range-progress{height:2px;background:var(--ui-accent);border-radius:2px}#timeline::-moz-range-thumb{width:6px;height:6px;border:0;background:var(--ui-text)}
 
@@ -50,3 +51,4 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 
 .chapters button[aria-current] .act-index,.chapters button[aria-current] .act-duration{color:var(--ui-selected-text)}
 @media(pointer:coarse){.transport .icon-button{width:40px;height:40px}.story-actions button{min-height:40px}}
+@media(max-width:360px){.playback{left:4px;right:4px}}
