@@ -2,11 +2,12 @@ import {bindPromptCopy} from './copy-prompt.js';
 import {PAINT_STYLES} from './paint.js';
 import {defaults,storageKey,readPreset} from './studio-preset.js';
 import {stories as catalogue} from './story-catalog.js';
+import {mountStoryGallery,loadStoryPreview} from './story-gallery.js';
 import {createEntranceStrokes,sampleWriter,sampleEntrance,ENTRANCE_DURATION} from './welcome-sequence.js';
 
 const entrance=document.querySelector('#entrance'),stories=document.querySelector('#stories');
 const canvas=document.querySelector('#entrance-canvas'),ctx=canvas.getContext('2d');
-const replay=document.querySelector('#replay-entrance');
+const replay=document.querySelector('#replay-logo');
 const motion=matchMedia('(prefers-reduced-motion: reduce)'),compact=matchMedia('(max-width: 640px)');
 let colors=PAINT_STYLES[defaults.shared.paintStyle].colors,background;
 function refreshPaint(){
@@ -21,16 +22,6 @@ function refreshPaint(){
 let sequence=createEntranceStrokes(compact.matches),elapsed=0,lastFrame=null,frame=0,active=false,pageAway=false;
 
 const list=document.querySelector('#story-list');
-for(const story of catalogue){
-  const card=document.createElement('a');card.className='story-card';
-  card.href=`./storyboard.html?story=${encodeURIComponent(story.id)}`;
-  if(story.cover){const cover=document.createElement('img');cover.className='story-cover';cover.src=story.cover;cover.alt='';cover.loading='lazy';card.append(cover);}
-  const heading=document.createElement('h2');heading.textContent=story.title;
-  const description=document.createElement('p');description.textContent=story.description;
-  const action=document.createElement('span');action.textContent='进入故事 ↗';
-  card.append(heading,description,action);list.append(card);
-}
-list.hidden=catalogue.length===0;
 document.querySelector('#story-empty').hidden=catalogue.length>0;
 
 const prompt=document.querySelector('#creation-prompt'),copy=document.querySelector('#copy-prompt'),copyStatus=document.querySelector('#copy-status');
@@ -39,6 +30,8 @@ const panel=document.querySelector('#creation-panel'),notice=document.querySelec
 const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 create.hidden=close.hidden=catalogue.length===0;
 if(catalogue.length){list.append(create);dialog.append(panel,notice);closeDraft.hidden=false;}
+const gallery=mountStoryGallery(catalogue);
+if(catalogue.length)loadStoryPreview(catalogue).then(entries=>{if(entries!==catalogue)gallery.render(entries);});
 async function checkDraft(){
   if(!local)return;
   panel.hidden=true;notice.hidden=false;
@@ -124,6 +117,7 @@ function tick(now){
 function showStories({focus=false,hash=true}={}){
   active=false;pause();entrance.hidden=true;entrance.inert=true;stories.hidden=false;stories.inert=false;
   document.body.classList.remove('is-entering');
+  gallery.layout();
   document.querySelector('meta[name="theme-color"]').content=background;
   if(hash&&location.hash!=='#stories')history.replaceState(null,'','#stories');
   if(focus)document.querySelector('#stories-title').focus({preventScroll:true});
@@ -139,9 +133,9 @@ function startEntrance(){
 }
 
 document.querySelector('#skip-entrance').addEventListener('click',event=>{event.preventDefault();showStories({focus:true});});
-replay.addEventListener('click',startEntrance);
+replay.addEventListener('click',event=>{event.preventDefault();startEntrance();});
 function updateMotion(){
-  replay.hidden=motion.matches||!ctx;
+  replay.title=motion.matches||!ctx?'选择故事':'重播入场';
   if(motion.matches&&active)showStories({focus:true});
 }
 motion.addEventListener('change',updateMotion);

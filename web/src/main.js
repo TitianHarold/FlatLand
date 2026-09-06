@@ -28,7 +28,9 @@ const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(48,1,.002,2000
 const residentCamera=new THREE.PerspectiveCamera(48,1,camera.near,camera.far);
 // Layer 1 contains the observer and overview annotations, never resident vision.
 camera.layers.enable(1);camera.layers.enable(2);
-scene.background=new THREE.Color('#000000');
+const stageBackground={value:new THREE.Color()};
+const lightTheme={value:0};
+scene.background=stageBackground.value;
 const worldGroup=new THREE.Group();scene.add(worldGroup);
 const overviewEye={value:new THREE.Vector2()};
 const maskRadius={value:0};
@@ -45,7 +47,7 @@ function opticalMaterial(color) {
   light.minFilter=THREE.LinearFilter;light.magFilter=THREE.LinearFilter;
   const material=new THREE.ShaderMaterial({
     side:THREE.DoubleSide,
-    uniforms:{eye:overviewEye,maskRadius,flatWindow,receiving,eyeForward,pixelRatio:{value:renderer.getPixelRatio()},clipPlanes:{value:new THREE.Vector2(camera.near,camera.far)},planeHeight:{value:PLANE_HEIGHT},shapeHeight:{value:shapeHeight},viewport:viewportSize,viewportOrigin,light:{value:light},range:{value:new THREE.Vector2()},fade:{value:1},coloring:{value:1},wash:{value:0},environment:{value:new THREE.Vector3()},tint:{value:new THREE.Vector3(...opticalTint(color))}},
+    uniforms:{stageBackground,lightTheme,eye:overviewEye,maskRadius,flatWindow,receiving,eyeForward,pixelRatio:{value:renderer.getPixelRatio()},clipPlanes:{value:new THREE.Vector2(camera.near,camera.far)},planeHeight:{value:PLANE_HEIGHT},shapeHeight:{value:shapeHeight},viewport:viewportSize,viewportOrigin,light:{value:light},range:{value:new THREE.Vector2()},fade:{value:1},coloring:{value:1},wash:{value:0},environment:{value:new THREE.Vector3()},tint:{value:new THREE.Vector3(...opticalTint(color))}},
     vertexShader:`attribute vec3 paint;attribute vec3 adjacent;attribute float stroke;attribute vec2 edgeStart;attribute vec2 edgeEnd;uniform vec2 viewport;uniform vec2 flatWindow;uniform vec2 receiving;uniform float planeHeight;uniform float shapeHeight;varying vec3 surfaceTint;varying vec2 worldXY;varying vec2 edgeA;varying vec2 edgeB;
       void main(){
         // Horizontal wall caps have no area in the resident's zero-degree view.
@@ -68,7 +70,7 @@ function opticalMaterial(color) {
           vec2 direction=(q.xy/q.w-gl_Position.xy/gl_Position.w)*viewport;
           vec2 normal=vec2(-direction.y,direction.x)/max(length(direction),0.0001);
           gl_Position.xy+=normal/viewport*gl_Position.w*stroke*2.0;}}`,
-    fragmentShader:`uniform vec2 eye;uniform vec2 eyeForward;uniform vec2 receiving;uniform vec2 flatWindow;uniform vec2 viewport;uniform vec2 viewportOrigin;uniform float pixelRatio;uniform vec2 clipPlanes;uniform float maskRadius;uniform sampler2D light;uniform vec2 range;uniform float fade;uniform float coloring;uniform float wash;uniform vec3 environment;uniform vec3 tint;varying vec3 surfaceTint;varying vec2 worldXY;varying vec2 edgeA;varying vec2 edgeB;
+    fragmentShader:`uniform vec3 stageBackground;uniform float lightTheme;uniform vec2 eye;uniform vec2 eyeForward;uniform vec2 receiving;uniform vec2 flatWindow;uniform vec2 viewport;uniform vec2 viewportOrigin;uniform float pixelRatio;uniform vec2 clipPlanes;uniform float maskRadius;uniform sampler2D light;uniform vec2 range;uniform float fade;uniform float coloring;uniform float wash;uniform vec3 environment;uniform vec3 tint;varying vec3 surfaceTint;varying vec2 worldXY;varying vec2 edgeA;varying vec2 edgeB;
       float cross2(vec2 a,vec2 b){return a.x*b.y-a.y*b.x;}
       void main(){float distance=length(worldXY-eye);gl_FragDepthEXT=gl_FragCoord.z;
         float bend=receiving.x*flatWindow.x;
@@ -91,12 +93,17 @@ function opticalMaterial(color) {
         // At zero degrees all optical surfaces share linear distance depth,
         // retaining precision for the distant star field as well as near edges.
         if(flatWindow.x>0.0)gl_FragDepthEXT=distance/clipPlanes.y;
-        if(maskRadius>0.0&&distance>=maskRadius){gl_FragColor=vec4(0.0,0.0,0.0,fade);return;}
+        if(maskRadius>0.0&&distance>=maskRadius){gl_FragColor=vec4(stageBackground,fade);return;}
         float t=clamp((distance-range.x)/range.y,0.0,1.0);
         vec2 sampleLight=texture2D(light,vec2((t*127.0+0.5)/128.0,0.5)).rg;
         vec3 pigment=surfaceTint*tint;
         vec3 painted=mix(sampleLight.r*pigment,sampleLight.g*pigment+(sampleLight.r-sampleLight.g)*environment,wash);
-        gl_FragColor=vec4(mix(vec3(sampleLight.r),painted,coloring),fade);}`
+        // On paper, optical brightness becomes ink coverage. Pigments keep their
+        // hue; neutral white surfaces become black, and zero light is paper.
+        float chroma=max(pigment.r,max(pigment.g,pigment.b))-min(pigment.r,min(pigment.g,pigment.b));
+        vec3 ink=mix(vec3(1.0)-pigment,pigment,step(.00001,chroma));
+        vec3 paper=vec3(1.0-sampleLight.r)+mix(vec3(0.0),mix(sampleLight.r*ink,sampleLight.g*ink+(sampleLight.r-sampleLight.g)*environment,wash),coloring);
+        gl_FragColor=vec4(mix(mix(vec3(sampleLight.r),painted,coloring),paper,lightTheme),fade);}`
   });
   material.defaultAttributeValues.paint=[1,1,1];
   material.defaultAttributeValues.normal=[0,0,0];
@@ -222,6 +229,16 @@ targetMarker.layers.set(2);targetMarker.renderOrder=10;targetMarker.visible=fals
 let targetMarkerUntil=0;
 function markTarget(target){targetMarker.position.set(target.x,target.y,.09);targetMarkerUntil=performance.now()+900;}
 for(const guide of [cone,rangeCircle,ring])guide.traverse(part=>part.layers.set(2));
+function updateStageTheme(){
+  const light=document.documentElement.dataset.uiTheme==='light';
+  lightTheme.value=Number(light);stageBackground.value.set(light?'#ffffff':'#000000');
+  renderer.setClearColor(stageBackground.value);
+  for(const {line} of sightGuides)line.material.color.set(light?'#555555':'#aaaaaa');
+  rangeCircle.material.color.set(light?'#555555':'#aaaaaa');
+  ring.material.color.set(light?'#333333':'#cccccc');
+  targetMarker.material.color.set(light?'#333333':'#cccccc');
+}
+addEventListener('flatland-ui-theme-change',updateStageTheme);updateStageTheme();
 if(parade&&!scripted)ring.scale.setScalar(4);
 const labelElements=(scripted?[]:sim.labels).map(({name,x,y,cls})=>{
   const el=document.createElement('div');el.className=`room-label ${cls}`;el.textContent=name;
@@ -230,7 +247,7 @@ const labelElements=(scripted?[]:sim.labels).map(({name,x,y,cls})=>{
 
 // Photometry stays shared with Study 000; the room always renders its 3D meshes.
 const rules={...OPTICS_RULES,finish:'clear',coloring:true,visionEffect:'attenuation',scatterDistance:25,scatterCurve:'smooth'};
-const scatter=createScatter(renderer,{eye:overviewEye,flatWindow,viewportOrigin,planeHeight:PLANE_HEIGHT});
+const scatter=createScatter(renderer,{eye:overviewEye,flatWindow,viewportOrigin,planeHeight:PLANE_HEIGHT,background:stageBackground});
 function renderView(view,rect){
   if(rules.visionEffect!=='attenuation'){
     scatter.render(scene,view,rect,maskRadius.value,rules.scatterDistance,rules.scatterCurve);

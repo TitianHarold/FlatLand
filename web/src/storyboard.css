@@ -1,11 +1,11 @@
 @import './ui-theme.css';
 *{box-sizing:border-box}
-:root{font:14px Inter,-apple-system,"PingFang SC",sans-serif;background:#000;color:var(--ui-text)}
+:root{font:14px Inter,-apple-system,"PingFang SC",sans-serif;background:var(--stage-background);color:var(--ui-text)}
 body{margin:0}button,input,textarea{font:inherit}a{color:inherit;text-underline-offset:4px}
 button{color:inherit;background:#ffffff0c;border:1px solid #ffffff24;border-radius:5px;padding:9px 14px;cursor:pointer;font-size:12px;white-space:nowrap}
 button:hover{background:#ffffff18;border-color:#ffffff50}button:disabled,input:disabled{opacity:.4;cursor:default}
 button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ui-accent);outline-offset:3px}[hidden]{display:none!important}
-.theatre{position:relative;height:calc(100dvh - var(--ui-header-height));min-height:420px;background:#000;overflow:hidden}
+.theatre{position:relative;height:calc(100dvh - var(--ui-header-height));min-height:420px;background:var(--stage-background);overflow:hidden}
 .theatre:focus{outline:none}.theatre:fullscreen{height:100dvh}
 .stage,#world-frame,#world-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 #world-frame iframe{pointer-events:auto}
@@ -16,7 +16,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .theatre:not(.controls-visible) .story-heading button{pointer-events:none}
 .theatre:not(.controls-visible) .playback{transform:translateY(12px)}
 .theatre .player-chrome:has(:focus-visible),.theatre .playback:hover,.theatre .playback:has(:focus-visible){opacity:1;pointer-events:auto;transform:none}
-.stage-message{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;color:var(--ui-muted);padding:24px;text-align:center;gap:12px;z-index:2}
+.stage-message{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--stage-background);color:var(--ui-muted);padding:24px;text-align:center;gap:12px;z-index:2}
 .stage-message h2{font-size:18px;font-weight:400;margin:0}.stage-message p{font-size:12px;margin:0}.stage-message a{font-size:14px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .playback{position:absolute;left:20px;right:20px;bottom:84px;z-index:4;max-width:300px;margin:auto;padding:2px 6px;background:#17171799;border:1px solid #ffffff12;border-radius:6px;backdrop-filter:blur(18px)}
@@ -43,7 +43,25 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 #pick-hint{position:absolute;top:90px;left:50%;transform:translateX(-50%);padding:9px 14px;background:#202020e6;border:1px solid #666;white-space:nowrap;font-size:12px}#point-cursor{position:absolute;left:50%;top:50%;width:14px;height:14px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #000;pointer-events:none}
 #upload-dialog{width:min(680px,calc(100% - 32px));max-height:calc(100svh - 32px);padding:22px;border:1px solid #444;background:var(--ui-panel);color:var(--ui-text)}#upload-dialog::backdrop{background:#000b}
 .upload-heading,.upload-actions{display:flex;justify-content:space-between;align-items:center;gap:16px}.upload-heading h2{font-size:18px;font-weight:500;margin:0}#upload-dialog p{font-size:12px;line-height:1.7;color:var(--ui-muted)}
-#upload-prompt{width:100%;min-height:280px;resize:vertical;border:1px solid #444;padding:12px;background:#000;color:var(--ui-text);font-size:12px;line-height:1.8}.upload-actions{margin-top:14px}.upload-actions button{margin-left:auto}.upload-actions p{margin:0}
+#upload-prompt{width:100%;min-height:280px;resize:vertical;border:1px solid #444;padding:12px;background:var(--stage-background);color:var(--ui-text);font-size:12px;line-height:1.8}.upload-actions{margin-top:14px}.upload-actions button{margin-left:auto}.upload-actions p{margin:0}
 @media(max-width:640px){.theatre{min-height:460px}.story-heading{padding:16px}.story-heading h1{font-size:14px}.story-heading button{padding:7px 10px}.playback{left:12px;right:12px;bottom:80px}.transport{gap:2px}.transport output{font-size:9px;margin:0 2px 0 4px}.view-controls{right:16px;top:64px}.view-controls>button{height:40px}.view-controls #choose-observer{height:40px}.chapters{--chapter-width:144px;left:12px;right:12px;bottom:16px}.chapters ol{gap:8px}.chapters button{padding:12px 8px;gap:8px}.act-duration{display:none}.act-text{left:18px;right:18px;bottom:194px}.act-text p{font-size:14px}#view-status{right:16px;top:118px;max-width:220px}#chapter-transition{max-width:90%;white-space:normal}#transition-title{font-size:15px}#upload-dialog{padding:16px}#pick-hint{max-width:90%;white-space:normal}}
 @media(max-height:650px) and (min-width:641px){.act-text{max-height:15vh}}
 @media(prefers-reduced-motion:reduce){.player-chrome,.act-text,.chapters button{transition:none}.chapters ol{scroll-behavior:auto}}
+
+html[data-ui-theme=light] button{background:var(--ui-panel);border-color:var(--ui-line)}
+html[data-ui-theme=light] button:hover{background:var(--ui-hover);border-color:var(--ui-input-line)}
+html[data-ui-theme=light] .story-heading{background:linear-gradient(#ffffffe6,transparent)}
+html[data-ui-theme=light] .story-heading h1,html[data-ui-theme=light] .act-text{text-shadow:none}
+html[data-ui-theme=light] .playback,html[data-ui-theme=light] .view-controls,
+html[data-ui-theme=light] #view-status,html[data-ui-theme=light] #chapter-transition,
+html[data-ui-theme=light] #pick-hint{background:#ffffffe6;border-color:var(--ui-line);color:var(--ui-text)}
+html[data-ui-theme=light] .icon-button img{filter:none}
+html[data-ui-theme=light] .icon-button,html[data-ui-theme=light] .view-controls>button{background:transparent;color:var(--ui-muted)}
+html[data-ui-theme=light] .view-controls>button[aria-pressed=true]{color:var(--ui-text)}
+html[data-ui-theme=light] .transport output,html[data-ui-theme=light] .act-index,html[data-ui-theme=light] .act-duration{color:var(--ui-muted)}
+html[data-ui-theme=light] .chapters button{background:#ffffffcc;color:var(--ui-muted);border-color:#aaa}
+html[data-ui-theme=light] .chapters button[aria-current]{background:#e5e5e5e6;color:var(--ui-text);border-color:#444}
+html[data-ui-theme=light] .act-text p{color:#242424;background:#ffffffd9;box-shadow:8px 0 #ffffffd9,-8px 0 #ffffffd9}
+html[data-ui-theme=light] #upload-prompt{background:var(--ui-control);border-color:var(--ui-line)}
+html[data-ui-theme=light] #timeline::-webkit-slider-thumb,html[data-ui-theme=light] #view-angle::-webkit-slider-thumb{background:#444}
+html[data-ui-theme=light] #timeline::-moz-range-thumb,html[data-ui-theme=light] #view-angle::-moz-range-thumb{background:#444}

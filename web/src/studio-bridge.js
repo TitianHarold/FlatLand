@@ -1,4 +1,5 @@
 import './studio-embed.css';
+import './ui-appearance.js';
 import {setCustomPaintStyle,setPaintMode,setWallColor} from './paint.js';
 
 // The studio owns the surrounding controls; each lab still owns its renderer,

@@ -5,14 +5,17 @@ html.studio-embedded body[data-lab=world] .controls,
 html.studio-embedded body[data-lab=world] footer,
 html.studio-embedded body[data-lab=world] .scene-meta,
 html.studio-embedded body[data-lab=world] #touch-controls{display:none!important}
-html.studio-embedded body[data-lab=world] .observation-panel{top:auto;bottom:18px;right:18px;width:225px;background:#141a19ed;border:1px solid #343d36;box-shadow:none}
+html.studio-embedded body[data-lab=world] .observation-panel{top:auto;bottom:18px;right:18px;width:225px;background:var(--ui-panel);border:1px solid var(--ui-line);box-shadow:none}
 html.studio-embedded body[data-lab=world] .panel-heading,
 html.studio-embedded body[data-lab=world] .observation-panel p,
 html.studio-embedded body[data-lab=world] .sight-directions{color:var(--ui-muted)}
-html.studio-embedded body[data-lab=world] .panel-heading button{color:#d4ddca;border-color:#454c41}
+html.studio-embedded body[data-lab=world] .panel-heading button{color:var(--ui-text);border-color:var(--ui-line)}
 html.studio-embedded body[data-lab=world] #minimap-panel{width:175px}
 html.studio-embedded body[data-lab=world] #minimap{width:105px;height:105px;margin:auto}
 html.studio-embedded body[data-lab=world] #minimap-panel p{display:none}
+@media(max-width:760px){
+  html.studio-embedded body[data-lab=world] .observation-panel{display:none!important}
+}
 html.studio-embedded body[data-lab=world] .room-label{font-size:9px;letter-spacing:.5px}
 html.studio-embedded body[data-lab=world] .room-label.main-label{font-size:12px;letter-spacing:2px}
 html.studio-embedded body[data-lab=world] .room-label .sub{display:none}
@@ -47,7 +50,7 @@ html.studio-embedded body[data-lab=optics] .field-note{font-size:11px}
 
 /* The workbench's star-field scene skips the old comparison rendering. */
 html.stars-only .field-study,html.stars-only #comparison,html.stars-only .comparison-caption,html.stars-only .comparison-note{display:none}
-html.stars-only.studio-embedded body[data-lab=optics]{background:#000}
+html.stars-only.studio-embedded body[data-lab=optics]{background:var(--stage-background)}
 html.stars-only.studio-embedded body[data-lab=optics] main{padding:20px;min-height:100vh;display:flex;flex-direction:column}
 html.stars-only.studio-embedded .crowd-section{margin:0;padding:0;border:0;flex:1;display:flex;flex-direction:column}
 html.stars-only.studio-embedded .crowd-heading>div,html.stars-only.studio-embedded .crowd-footer{display:none}

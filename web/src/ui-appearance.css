@@ -1,43 +1,48 @@
-/* Opt-in chrome for the workbench and catalogue. The player and stage keep their own styles. */
+/* Shared neutral controls; scene pigments remain independent of UI colours. */
 html[data-ui-theme]{
   color-scheme:dark;
-  --ui-background:#16191f;--ui-panel:#22262e;--ui-header:#1c2027;
-  --ui-control:#191e26;--ui-plot:#1a2029;--ui-selected:#304263;
-  --ui-line:#373e49;--ui-text:#e3e7ee;--ui-muted:#a4adbb;--ui-accent:#91b4f4;
-  --ui-hover:#2c333e;--ui-selected-text:#d8e6ff;--ui-selected-line:#718dbb;
-  --ui-panel-heading:#272d37;--ui-input-line:#495363;--ui-track:#4b5666;
-  --ui-grid:#465363;--ui-shadow:0 2px 5px #0002,0 10px 24px #0001;
+  --ui-background:#000;--ui-panel:#111;--ui-header:#000;
+  --ui-control:#1b1b1b;--ui-plot:#202020;--ui-selected:#343434;
+  --ui-line:#383838;--ui-text:#ededed;--ui-muted:#a0a0a0;--ui-accent:#e5e5e5;
+  --ui-hover:#292929;--ui-selected-text:#fff;--ui-selected-line:#929292;
+  --ui-panel-heading:#242424;--ui-input-line:#595959;--ui-track:#555;
+  --ui-grid:#464646;--ui-shadow:0 2px 5px #0002,0 10px 24px #0001;
   --ui-inset:inset 0 1px 0 #ffffff06;--ui-icon-filter:invert(1);
+  --stage-background:#000;--stage-ink:#e6e6e6;
 }
 html[data-ui-theme=light]{
   color-scheme:light;
-  --ui-background:#edf0f5;--ui-panel:#fff;--ui-header:#f9fafc;
-  --ui-control:#f3f5f9;--ui-plot:#f0f3f9;--ui-selected:#e6edfc;
-  --ui-line:#d6dce6;--ui-text:#263246;--ui-muted:#5b687c;--ui-accent:#426aba;
-  --ui-hover:#e9eef6;--ui-selected-text:#2e579e;--ui-selected-line:#98afd9;
-  --ui-panel-heading:#f7f9fc;--ui-input-line:#b4bfce;--ui-track:#a4b0c2;
-  --ui-grid:#b7c3d6;--ui-shadow:0 2px 4px #273d5910,0 8px 20px #273d5908;
+  --ui-background:#fafafa;--ui-panel:#fff;--ui-header:#fafafa;
+  --ui-control:#f1f1f1;--ui-plot:#ededed;--ui-selected:#dedede;
+  --ui-line:#d1d1d1;--ui-text:#202020;--ui-muted:#696969;--ui-accent:#303030;
+  --ui-hover:#e8e8e8;--ui-selected-text:#111;--ui-selected-line:#888;
+  --ui-panel-heading:#f5f5f5;--ui-input-line:#b4b4b4;--ui-track:#aaa;
+  --ui-grid:#bcbcbc;--ui-shadow:0 2px 4px #00000010,0 8px 20px #00000008;
   --ui-inset:inset 0 1px 0 #fff;--ui-icon-filter:none;
+  --stage-background:#fff;--stage-ink:#242424;
 }
 html[data-ui-theme] .app-header{background:var(--ui-header)}
-html[data-ui-theme] .app-brand svg{stroke:var(--ui-accent)}
-html[data-ui-theme] .mode-nav{background:var(--ui-control);border-color:var(--ui-line);border-radius:7px}
-html[data-ui-theme] .mode-nav a{border-radius:4px}
-html[data-ui-theme] .mode-nav a[aria-current=page]{background:var(--ui-panel);color:var(--ui-text);box-shadow:0 1px 3px #0002}
+html[data-ui-theme] .app-brand svg{stroke:var(--ui-text)}
+html[data-ui-theme] .mode-nav{background:transparent;border-color:transparent;border-radius:0}
+html[data-ui-theme] .mode-nav a{position:relative;border-radius:0}
+html[data-ui-theme] .mode-nav a[aria-current=page]{background:transparent;color:var(--ui-text);box-shadow:none}
+html[data-ui-theme] .mode-nav a[aria-current=page]::after{content:'';position:absolute;bottom:0;left:calc(50% - 12px);width:24px;height:1px;background:currentColor}
 html[data-ui-theme] .mode-nav a:hover{background:var(--ui-hover)}
 html[data-ui-theme] .app-header-actions{gap:10px}
-.app-header .theme-toggle{position:relative;display:inline-flex;flex-shrink:0;width:58px;height:30px;cursor:pointer}
-.app-header .theme-switch{appearance:none;position:relative;flex-shrink:0;width:58px;height:30px;margin:0;border:1px solid var(--ui-input-line);border-radius:16px;background:var(--ui-control);cursor:pointer;touch-action:manipulation;transition:background .15s}
-.app-header .theme-switch::before{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:var(--ui-accent);transition:transform .15s}
-.app-header .theme-switch:checked{background:var(--ui-selected);border-color:var(--ui-selected-line)}
-.app-header .theme-switch:checked::before{transform:translateX(28px);background:var(--ui-accent)}
-.app-header .theme-switch:hover{border-color:var(--ui-accent)}
-.app-header .theme-switch:focus-visible{outline:2px solid var(--ui-accent);outline-offset:3px}
-@media(max-width:640px){html[data-ui-theme] .app-header-actions{gap:8px}}
-@media(prefers-reduced-motion:reduce){.app-header .theme-switch,.app-header .theme-switch::before{transition:none}}
+@media(min-width:641px){
+  html[data-ui-theme]{--ui-header-height:80px}
+  html[data-ui-theme] .app-header{padding-inline:clamp(18px,3.2vw,48px)}
+  html[data-ui-theme] .app-brand>span{font-size:20px}
+  html[data-ui-theme] .app-brand svg{width:32px;height:32px}
+  html[data-ui-theme] .mode-nav a{font-size:17px}
+}
+html[data-ui-theme] .app-brand small{display:none}
+.app-header .theme-cycle{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;padding:0;border:1px solid var(--ui-selected-line);border-radius:50%;background:transparent;color:var(--ui-text);cursor:pointer;touch-action:manipulation}
+.theme-cycle img,.theme-auto{display:none;grid-area:1/1}
+.theme-cycle img{width:18px;height:18px;filter:var(--ui-icon-filter)}
+.theme-auto{font:18px -apple-system,BlinkMacSystemFont,sans-serif}
+html[data-ui-theme-mode=light] .theme-sun,html[data-ui-theme-mode=dark] .theme-moon,html[data-ui-theme-mode=auto] .theme-auto{display:block}
+.app-header .theme-cycle:hover{background:var(--ui-hover);border-color:var(--ui-text)}
+.app-header .theme-cycle:focus-visible{outline:2px solid var(--ui-accent);outline-offset:4px}
+@media(max-width:640px){html[data-ui-theme] .app-header-actions{gap:8px}.app-header .theme-cycle{width:32px;height:32px}}
 @media(max-width:380px){html[data-ui-theme] .app-brand>span{font-size:14px}html[data-ui-theme] .app-brand svg{width:22px}html[data-ui-theme] .app-brand{gap:6px}}
-
-.theme-symbols{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;pointer-events:none}
-.theme-symbols img{display:block;width:14px;height:14px;filter:var(--ui-icon-filter);opacity:.55}
-.theme-switch:not(:checked)+.theme-symbols .theme-sun{filter:invert(1);opacity:1}
-.theme-switch:checked+.theme-symbols .theme-moon{filter:none;opacity:1}

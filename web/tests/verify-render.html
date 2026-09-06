@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui-theme="dark">
 <meta charset="utf-8"><title>摄影棚渲染检查</title>
 <style>body{font:14px system-ui;margin:24px}iframe{width:900px;max-width:100%;height:420px;border:1px solid #ccc}pre{white-space:pre-wrap;line-height:1.8;max-height:150px;overflow:auto}</style>
 <h1>摄影棚渲染检查</h1><pre id="result" role="status">正在运行…</pre>
@@ -85,6 +85,31 @@ window.addEventListener('message',async function ready(event){
     const api=frame.contentWindow.flatlandStudio;
     api.set('wandering',false);
     await until(()=>api.snapshot().renderCalls>1);
+    const originalOptics=api.snapshot().optics,originalPaint=JSON.stringify(api.snapshot().paint);
+    const setTheme=async theme=>{
+      frame.contentWindow.postMessage({type:'flatland-ui-theme',theme},location.origin);
+      await until(()=>frame.contentDocument.documentElement.dataset.uiTheme===theme);
+      await nextFrame();
+    };
+    api.set('coloring',false);await nextFrame();
+    const darkInk=await readRow(.5,true);
+    await setTheme('light');
+    const paperInk=await readRow(.5,true);
+    assert(darkInk.some((v,i)=>i%4!==3&&v>20)&&paperInk.every((v,i)=>i%4===3?v===255:Math.abs(v+darkInk[i]-255)<=2),'浅色无染色：实际 GPU 灰度反转，保留明暗层次与遮挡');
+    api.set('coloring',true);await nextFrame();const paperPaint=await readRow(.5,true);
+    await setTheme('dark');const darkPaint=await readRow(.5,true);
+    let colored=0,matching=0;
+    for(let i=0;i<darkPaint.length;i+=4){
+      if(Math.max(...darkPaint.slice(i,i+3))-Math.min(...darkPaint.slice(i,i+3))<8)continue;
+      colored++;
+      if(Math.abs((paperPaint[i]-paperPaint[i+1])-(darkPaint[i]-darkPaint[i+1]))<=2&&Math.abs((paperPaint[i+1]-paperPaint[i+2])-(darkPaint[i+1]-darkPaint[i+2]))<=2)matching++;
+    }
+    assert(colored>10&&matching/colored>.99,'浅色染色：有色像素保持通道差与色相，不做全图反色');
+    await setTheme('light');
+    api.configure({visionEffect:'scatter',attenuationMode:'mask',attenuationDistance:.1});await nextFrame();
+    for(const row of [.1,.5,.9])assert((await readRow(row,true)).every(v=>v===255),'浅色散射：遮罩与一维窗口外为空白，没有黑边');
+    api.configure(originalOptics);await setTheme('dark');
+    assert(JSON.stringify(api.snapshot().paint)===originalPaint,'切换主题不改写居民和建筑配色');
     for(let i=0;i<12;i++)await nextFrame();
     const idleUpdates=api.snapshot().lightingUpdates,idleRow=await readRow(.5,true);
     for(let i=0;i<12;i++)await nextFrame();

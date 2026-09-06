@@ -23,19 +23,25 @@
 
   <div id="stories" class="stories-shell">
     <header class="app-header">
-      <a class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事">
+      <a id="replay-logo" class="app-brand" href="./welcome.html#stories" aria-label="平面国 · 选择故事">
         <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 30 12 25 29H7L2 12Z"/><path d="M16 2v15L7 29m9-12 14-5M2 12l14 5 9 12"/></svg>
         <span>平面国<small>FLATLAND</small></span>
       </a>
       <nav class="mode-nav" aria-label="模式"><a href="./welcome.html#stories" aria-current="page">故事</a><a href="./studio.html">游乐场</a></nav>
-      <div class="app-header-actions"><label class="theme-toggle" title="切换界面主题"><input class="theme-switch" data-ui-theme-toggle type="checkbox" role="switch" aria-label="夜间模式" checked><span class="theme-symbols" aria-hidden="true"><img class="theme-sun" src="./icons/sun.svg" alt=""><img class="theme-moon" src="./icons/moon.svg" alt=""></span></label></div>
+      <div class="app-header-actions"><button class="theme-cycle" data-ui-theme-toggle type="button" aria-label="界面主题：自动跟随系统；点击切换为亮色" title="自动跟随系统"><img class="theme-sun" src="./icons/sun.svg" alt=""><img class="theme-moon" src="./icons/moon.svg" alt=""><span class="theme-auto" aria-hidden="true">A</span></button></div>
     </header>
     <main>
-      <section class="story-intro" aria-labelledby="stories-title">
-        <h1 id="stories-title" tabindex="-1">故事</h1>
-        <button id="replay-entrance" class="replay-button" hidden><span aria-hidden="true">↺</span> 重播入场</button>
+      <section id="featured-story" class="featured-story" aria-labelledby="featured-title" hidden>
+        <div class="featured-art"><img id="featured-cover" alt=""></div>
+        <div class="featured-copy">
+          <h1 id="featured-title"></h1>
+          <p id="featured-description"></p>
+          <a id="featured-play" class="story-play"><img src="./icons/play.svg" alt="">播放故事</a>
+          <span id="featured-soon" class="featured-soon" hidden>Coming soon</span>
+        </div>
       </section>
-      <section id="story-list" class="story-list" aria-label="可观看的故事" hidden></section>
+      <section class="story-intro" aria-labelledby="stories-title"><h2 id="stories-title" tabindex="-1">全部故事</h2></section>
+      <div id="deck-viewport" class="deck-viewport"><div id="story-list" class="story-list" role="group" aria-label="全部故事" hidden></div></div>
       <button id="create-story" class="new-story-card" type="button" aria-haspopup="dialog" hidden><span class="create-icon"><img src="./icons/plus.svg" alt=""></span><span>创作故事</span></button>
       <section id="story-empty" class="empty-stage" aria-labelledby="empty-title">
         <div class="empty-art" aria-hidden="true">

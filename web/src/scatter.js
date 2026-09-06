@@ -2,14 +2,14 @@ import * as THREE from 'three';
 
 // Blur the already visible world. No extra geometry pass or hidden surfaces:
 // the same depth buffer supplies distance and protects nearer silhouettes.
-export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeight}){
+export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeight,background={value:new THREE.Color(0)}}){
   const targets=new Map(),quadScene=new THREE.Scene(),quadCamera=new THREE.Camera();
-  const uniforms={image:{value:null},depth:{value:null},step:{value:new THREE.Vector2()},
+  const uniforms={background,image:{value:null},depth:{value:null},step:{value:new THREE.Vector2()},
     eye,flatWindow,range:{value:1},scatterDistance:{value:1},curve:{value:0},radius:{value:1},far:{value:1},
     origin:{value:new THREE.Vector3()},right:{value:new THREE.Vector3()},up:{value:new THREE.Vector3()},forward:{value:new THREE.Vector3()}};
   const material=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms,
     vertexShader:`varying vec2 vUv;void main(){vUv=position.xy*.5+.5;gl_Position=vec4(position.xy,0.,1.);}`,
-    fragmentShader:`varying vec2 vUv;uniform sampler2D image;uniform sampler2D depth;
+    fragmentShader:`uniform vec3 background;varying vec2 vUv;uniform sampler2D image;uniform sampler2D depth;
       uniform vec2 step;uniform vec2 eye;uniform vec2 flatWindow;uniform float range;uniform float scatterDistance;uniform int curve;uniform float radius;uniform float far;
       uniform vec3 origin;uniform vec3 right;uniform vec3 up;uniform vec3 forward;
       float spread(float d){
@@ -29,9 +29,9 @@ export function createScatter(renderer,{eye,flatWindow,viewportOrigin,planeHeigh
         return t>0.?length((origin+ray*t).xy-eye):far;
       }
       void main(){
-        if(flatWindow.x==1.&&abs(vUv.y*2.-1.)>flatWindow.y){gl_FragColor=vec4(0.,0.,0.,1.);return;}
+        if(flatWindow.x==1.&&abs(vUv.y*2.-1.)>flatWindow.y){gl_FragColor=vec4(background,1.);return;}
         float d=distanceAt(vUv),hit=texture2D(depth,vUv).r;
-        if(range>0.&&d>=range&&(flatWindow.x==0.||hit<1.)){gl_FragColor=vec4(0.,0.,0.,1.);return;}
+        if(range>0.&&d>=range&&(flatWindow.x==0.||hit<1.)){gl_FragColor=vec4(background,1.);return;}
         float blur=radius*spread(d);
         if(blur<.1){gl_FragColor=vec4(texture2D(image,vUv).rgb,1.);return;}
         vec3 sum=vec3(0.);float weights=0.;

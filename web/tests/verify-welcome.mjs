@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
+import {deckLayout} from '../src/story-gallery.js';
+import {coverProgress} from '../src/story-cover-motion.js';
 import * as sequence from '../src/welcome-sequence.js';
 import {PAINT_STYLES,DEFAULT_PAINT_STYLE} from '../src/paint.js';
 import {defaults,storageKey,readPreset} from '../src/studio-preset.js';
@@ -41,12 +43,14 @@ assert.equal(sampleEntrance(ENTRANCE_DURATION).opacity,0);
 // Run the page controller with a deterministic frame clock and a minimal DOM.
 // This exercises event ordering, cancellation and resume without a test dependency.
 const copySource=(await readFile(new URL('../src/copy-prompt.js',import.meta.url),'utf8')).replace('export function','function');
-const source=copySource+'\n'+(await readFile(new URL('../src/welcome.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
+const gallerySource=(await readFile(new URL('../src/story-gallery.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/export /g,'').replaceAll('import.meta.env.DEV','false');
+const source=copySource+'\n'+gallerySource+'\n'+(await readFile(new URL('../src/welcome.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const html=await readFile(new URL('../welcome.html',import.meta.url),'utf8');
 function page({hash='',reduced=false,catalogue=[],canvas=true,clipboard=true,legacyCopy=false,preset,theme='dark'}={}){
-  const element=()=>({hidden:false,inert:false,style:{setProperty(k,v){this[k]=v;}},children:[],events:{},classList:{add(){},remove(){}},
+  const element=()=>({hidden:false,inert:false,style:{setProperty(k,v){this[k]=v;}},children:[],events:{},classList:{add(){},remove(){},toggle(){}},clientWidth:920,dataset:{},
+    replaceChildren(...children){this.children=children;},scrollIntoView(){},
     append(...children){this.children.push(...children);},addEventListener(name,fn){this.events[name]=fn;},setAttribute(name,value){this[name]=value;},focus(){this.focused=true;},select(){this.selected=true;},
-    showModal(){this.open=true;},close(){this.open=false;},getBoundingClientRect(){return {width:920};}});
+    showModal(){this.open=true;},close(){this.open=false;},getBoundingClientRect(){return {width:240,height:320};}});
   const ids=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],element()]));
   ids.set('meta[name="theme-color"]',element());
   ids.get('#creation-prompt').value=html.match(/<textarea id="creation-prompt"[^>]*>([\s\S]*?)<\/textarea>/)[1];
@@ -81,12 +85,12 @@ assert.equal(p.ids.get('#stories').hidden,true,'Hidden wall time does not skip t
 p.step(15200);assert.equal(p.ids.get('#stories').hidden,true);
 p.step(17200);assert.equal(p.ids.get('#stories').hidden,false);assert.equal(p.pending.size,0);
 assert.equal(p.location.hash,'#stories');assert(p.ids.get('#stories-title').focused,'Completion moves focus into the story page');
-p.click('#replay-entrance');p.step(20000);p.step(21000);
+p.click('#replay-logo');p.step(20000);p.step(21000);
 assert.equal(p.ids.get('#entrance').style.opacity,1,'Replay restores the entrance');
 p.window.events.pagehide();assert.equal(p.pending.size,0,'Leaving the page cancels its frame');
 p.window.events.pageshow();assert.equal(p.pending.size,1,'Back-forward cache restore can resume');
 p.click('#skip-entrance');assert.equal(p.pending.size,0);assert.equal(p.ids.get('#stories').hidden,false);
-p.click('#replay-entrance');p.motion.matches=true;p.motion.events.change();
+p.click('#replay-logo');p.motion.matches=true;p.motion.events.change();
 assert.equal(p.pending.size,0);assert.equal(p.ids.get('#stories').hidden,false,'Live reduced-motion preference finishes the intro');
 for(const options of [{hash:'#stories'},{reduced:true},{canvas:false}]){
   const direct=page(options);assert.equal(direct.pending.size,0);assert.equal(direct.ids.get('#stories').hidden,false);
@@ -94,13 +98,27 @@ for(const options of [{hash:'#stories'},{reduced:true},{canvas:false}]){
 const empty=page({hash:'#stories',catalogue:[]});assert.equal(empty.ids.get('#story-list').hidden,true);assert.equal(empty.ids.get('#story-empty').hidden,false);
 const fixture=page({hash:'#stories',catalogue:[{id:'one & 二',title:'<b>A story</b>',description:'A published story',source:'/story.json'}]});
 const card=fixture.ids.get('#story-list').children[0];
-assert.equal(card.href,'./storyboard.html?story=one%20%26%20%E4%BA%8C');
-assert.equal(card.children[0].textContent,'<b>A story</b>','Catalogue text is inserted as text, never markup');
+assert.equal(fixture.ids.get('#featured-play').href,'./storyboard.html?story=one%20%26%20%E4%BA%8C');
+assert.equal(card.children[0].children[0].textContent,'<b>A story</b>','Catalogue text is inserted as text, never markup');
 assert.equal(fixture.ids.get('#story-empty').hidden,true);
 assert.equal(empty.ids.get('#create-story').hidden,true);
 assert.equal(empty.ids.get('#creation-dialog').children.length,0,'Empty catalogue shows the prompt inline');
 assert.equal(fixture.ids.get('#create-story').hidden,false);
 assert.equal(fixture.ids.get('#creation-dialog').children[0],fixture.ids.get('#creation-panel'),'The same prompt moves into the dialog when stories exist');
+const held=page({hash:'#stories',catalogue:[{id:'first',title:'First'},{id:'second',title:'Second'}]});
+const heldCards=held.ids.get('#story-list').children;
+heldCards[1].events.pointerenter({pointerType:'mouse'});
+assert.equal(held.ids.get('#featured-title').textContent,'Second','Hover immediately previews and holds the latest story without a click');
+assert(heldCards[1].style.transform.includes(`${-320/9}px`),'The hovered card lifts by one ninth of its own height');
+assert(heldCards[0].style.transform.endsWith(',0px)'),'The previous card returns to the baseline');
+held.ids.get('#deck-viewport').events.pointerleave();
+assert.equal(held.ids.get('#featured-title').textContent,'Second','Leaving the deck preserves the latest hovered story');
+assert(heldCards[1].style.transform.includes(`${-320/9}px`),'The latest story stays raised after leaving');
+held.ids.get('#create-story').events.pointerenter({pointerType:'mouse'});
+assert(held.ids.get('#create-story').style.transform.includes(`${-320/9}px`),'Create raises on hover without selection or a click');
+assert.equal(held.ids.get('#featured-title').textContent,'Second','Create keeps the last story preview');
+held.ids.get('#create-story').events.pointerleave();
+assert(held.ids.get('#create-story').style.transform.endsWith(',0px)'),'Create returns to its baseline after hover');
 fixture.click('#create-story');assert.equal(fixture.ids.get('#creation-dialog').open,true);
 fixture.click('#close-prompt');assert.equal(fixture.ids.get('#creation-dialog').open,false);
 assert(html.includes('https://github.com/TitianHarold/FlatLand')&&html.includes('AGENTS.md')&&html.includes('故事创作模式'));
@@ -118,7 +136,7 @@ for(const legacyCopy of [false,true]){
 const catalogueSource=(await readFile(new URL('../src/story-catalog.js',import.meta.url),'utf8')).replaceAll('import.meta.glob','glob').replace('export const stories=','const stories=');
 const documents={'../stories/first-story/story.json':{title:'First story',description:'Test only'},'../stories/examples/story.json':{title:'Example'},'../stories/technical-demo/story.json':{title:'Demo',example:true}};
 const discovered=vm.runInNewContext(catalogueSource+'\nstories',{
-  glob(pattern,options){if(pattern.includes('settings.json')||pattern.includes('assets/cover.'))return {};assert.equal(pattern,'../stories/*/story.json');return options.query==='?url'?Object.fromEntries(Object.keys(documents).map(path=>[path,'/FlatLand/assets/first-story.json'])):documents;},
+  glob(pattern,options){if(pattern.includes('settings.json')||pattern.includes('assets/cover.')||pattern.includes('assets/cover-motion.json'))return {};assert.equal(pattern,'../stories/*/story.json');return options.query==='?url'?Object.fromEntries(Object.keys(documents).map(path=>[path,'/FlatLand/assets/first-story.json'])):documents;},
 });
 assert.equal(discovered.length,1);assert.equal(discovered[0].id,'first-story');
 assert.equal(discovered[0].source,'/FlatLand/assets/first-story.json','Story sources use bundled URLs');
@@ -149,3 +167,42 @@ for(const theme of ['light','dark']){
   assert.equal(palettePage.ids.get('#stories').style['--resident-blue'],'#334455');
 }
 console.log('Welcome palette: saved/custom colours, black/white theme ink, matching polygon fills, live theme changes without restarting, and page restore passed.');
+
+// Layout has fixed physical dimensions and paint order; hover changes only x.
+assert.deepEqual(deckLayout(2,188,1440),{positions:[0,204],total:392},'Two cards remain adjacent with a fixed 16px gap');
+for(const count of [6,20])for(const available of [320,920,1440]){
+  const width=240,active=Math.min(2,count-1);
+  const base=deckLayout(count,width,available),hover=deckLayout(count,width,available,active);
+  assert.equal(base.positions[0],0);
+  assert.equal(hover.positions[active]-hover.positions[active-1],width*.75);
+  for(let i=1;i<count;i++){
+    const gap=hover.positions[i]-hover.positions[i-1];
+    assert(gap>=width*.25&&gap<width,'Every later card stays covered, with at least one quarter exposed');
+  }
+  assert.equal(hover.total,hover.positions.at(-1)+width);
+}
+const phases=Array.from({length:48},(_,i)=>coverProgress(1000,i,48));
+assert(phases.every(phase=>phase.line===1&&phase.colour===0),'The drawing completes in monochrome first');
+assert(coverProgress(1200,0,48).colour>0&&coverProgress(1200,1,48).colour===0,'Colour strikes are staggered');
+assert(Array.from({length:48},(_,i)=>coverProgress(3400,i,48)).every(p=>p.line===1&&p.colour===1&&p.fill===1));
+
+// Exercise the actual theme controller, including OS changes and iframe messages.
+const themeSource=(await readFile(new URL('../src/ui-appearance.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
+function appearance(saved='auto'){
+  const events={},media={matches:false,addEventListener(name,fn){this[name]=fn;}},button={setAttribute(name,value){this[name]=value;},addEventListener(name,fn){this[name]=fn;}};
+  const root={dataset:{}},messages=[],storage=new Map([['flatland-ui-theme-v1',saved]]);
+  const document={documentElement:root,querySelectorAll(selector){return selector==='iframe'?[{contentWindow:{postMessage(data){messages.push(data);}}}]:[button];}};
+  const window={dispatchEvent(){}};
+  const sandbox={document,window,parent:window,location:{origin:'http://localhost'},Event:class{},matchMedia:()=>media,localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},addEventListener:(name,fn)=>events[name]=fn};
+  vm.runInNewContext(themeSource,sandbox);
+  return {root,button,media,messages,storage,events};
+}
+const appearancePage=appearance();
+assert.equal(appearancePage.root.dataset.uiTheme,'light');assert.equal(appearancePage.root.dataset.uiThemeMode,'auto');
+appearancePage.media.matches=true;appearancePage.media.change();assert.equal(appearancePage.root.dataset.uiTheme,'dark');
+for(const mode of ['light','dark','auto']){appearancePage.button.click();assert.equal(appearancePage.root.dataset.uiThemeMode,mode);assert.equal(appearancePage.storage.get('flatland-ui-theme-v1'),mode);}
+appearancePage.button.click();appearancePage.media.matches=false;appearancePage.media.change();
+assert.equal(appearancePage.root.dataset.uiTheme,'light','An explicit choice survives a system preference change');
+assert.equal(appearancePage.messages.at(-1).mode,'light','Embedded stages receive the preference as well as the resolved colour');
+assert.equal(appearance('dark').root.dataset.uiThemeMode,'dark','The previous binary preference migrates without changing it');
+console.log('Gallery: horizontal overlap, minimum exposure, finite monochrome-to-colour drawing, light/dark/auto cycle and system updates passed.');
