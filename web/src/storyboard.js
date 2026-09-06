@@ -13,6 +13,8 @@ const clock=seconds=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String
 const storyId=new URLSearchParams(location.search).get('story');
 const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let cursor={x:.5,y:.5};
+const heightStorageKey='flatland-story-window-height-v1';
+let windowHeight,displayMode,showColor=true;
 let script,scriptText,storyPreset,source,api,frame,loadTimer,time=0,playing=false,playbackRate=1,previous=0,actIndex=-1,animation=0;
 function report(error,target='error'){$(target).textContent=error.message||String(error);$(target).hidden=false;}
 function setPlaying(value){
@@ -47,7 +49,7 @@ function clearSceneFade(){
 }
 function showFrame(next){
   display(api.story.seek(next));
-  if(time===script.duration)setPlaying(false);
+  if(!playing||time===script.duration)setPlaying(false);
 }
 function seek(next){
   if(!api)return;
@@ -72,6 +74,8 @@ function failStage(error){
   clearTimeout(loadTimer);clearSceneFade();api=null;setPlaying(false);
   $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
+  for(const id of ['stretch-height','stretch-full','show-color','story-window-height'])$(id).disabled=true;
+  closeHeightPanel();
   $('point-picker').hidden=true;
   for(const button of $('act-list').querySelectorAll('button'))button.disabled=true;
   $('stage-loading').hidden=false;$('stage-loading').querySelector('h2').textContent='舞台暂时没有就绪';
@@ -90,10 +94,12 @@ function loadText(text,label){
     for(const [className,text] of [['act-index',String(i+1).padStart(2,'0')],['act-name',act.title],['act-duration',clock(act.duration)]]){
       const span=document.createElement('span');span.className=className;span.textContent=text;button.append(span);
     }
-    button.onclick=()=>{seek(act.start);setPlaying(true);};item.append(button);$('act-list').append(item);
+    button.onclick=()=>{seek(act.start);previous=performance.now();showControls();};item.append(button);$('act-list').append(item);
   });
   $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=true;
   $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=$('view-angle').disabled=true;
+  for(const id of ['stretch-height','stretch-full','show-color','story-window-height'])$(id).disabled=true;
+  closeHeightPanel();
   $('point-picker').hidden=true;
   $('timeline').max=script.duration;display({time:0,actIndex:0});
   $('error').hidden=true;$('stage-empty').hidden=true;$('stage-loading').hidden=false;$('retry').hidden=true;
@@ -116,13 +122,19 @@ addEventListener('message',event=>{
     if(!api?.story)throw new Error('当前世界不支持剧本播放。');
     // Reuse parameter validation, never the playground's saved configuration.
     const preset=readPreset(storyPreset??{version:1,state:{}});
+    windowHeight=preset.view.windowHeight;displayMode=preset.view.display;showColor=true;
+    try{
+      const saved=Number(localStorage.getItem(heightStorageKey));
+      if(Number.isFinite(saved)&&saved>=1&&saved<=100)windowHeight=saved;
+    }catch{}
     api.configure(sharedSettings(preset.shared));
-    for(const [id,value] of [['finish','clear'],['contour',true],['coloring',preset.shared.coloring],['paint-style',preset.shared.paintStyle],['field-angle',preset.view.fieldAngle],['projection',preset.view.projection],['resident-window',preset.view.windowHeight],['show-range',preset.view.showRange],['map-lock',preset.view.mapLocked]])api.set(id,value);
-    api.configure({display:preset.view.display});
+    for(const [id,value] of [['finish','clear'],['contour',true],['coloring',preset.shared.coloring],['paint-style',preset.shared.paintStyle],['field-angle',preset.view.fieldAngle],['projection',preset.view.projection],['resident-window',windowHeight],['show-range',preset.view.showRange],['map-lock',preset.view.mapLocked]])api.set(id,value);
+    api.configure({display:displayMode});
     api.story.load(scriptText);clearTimeout(loadTimer);
     $('stage-loading').hidden=true;$('stage-caption').hidden=false;
     $('play').disabled=$('replay').disabled=$('forward').disabled=$('speed').disabled=$('timeline').disabled=false;
     $('view-overview').disabled=$('view-resident').disabled=$('choose-observer').disabled=false;
+    for(const id of ['stretch-height','stretch-full','show-color','story-window-height'])$(id).disabled=false;
     $('view-angle').disabled=false;setView(90-preset.view.dimension*.9);$('upload-story').hidden=!local;
     for(const button of $('act-list').querySelectorAll('button'))button.disabled=false;
     seek(0);setPlaying(true);
@@ -148,7 +160,45 @@ function setView(angle){
   $('view-angle').setAttribute('aria-valuetext',`${Math.round(angle)}°${angle===90?'，俯视':angle===0?'，居民视角':''}`);
   $('view-overview').setAttribute('aria-pressed',angle===90);$('view-resident').setAttribute('aria-pressed',angle===0);
   $('view-label').textContent=angle===0?'居民视角':'俯视';
+  syncDisplayControls();
 }
+function syncDisplayControls(){
+  $('stretch-height').textContent=`${windowHeight}%`;
+  $('story-window-height').value=windowHeight;$('story-window-height-value').textContent=`${windowHeight}%`;
+  const resident=Number($('view-angle').value)===100;
+  $('stretch-height').setAttribute('aria-pressed',resident&&displayMode==='line');
+  $('stretch-full').setAttribute('aria-pressed',resident&&displayMode==='expanded');
+  $('show-color').setAttribute('aria-pressed',showColor);$('show-color').textContent=showColor?'显色':'无色';
+}
+function stretchView(mode){
+  if(!api)return;
+  displayMode=mode;api.set('resident-window',windowHeight);api.configure({display:mode});
+  finishPicking();setView(0);showControls();
+}
+function closeHeightPanel(){
+  $('height-panel').hidden=true;$('stretch-height').setAttribute('aria-expanded',false);
+}
+$('stretch-height').onclick=()=>{
+  stretchView('line');const open=$('height-panel').hidden;
+  $('height-panel').hidden=!open;$('stretch-height').setAttribute('aria-expanded',open);
+};
+$('stretch-full').onclick=()=>{closeHeightPanel();stretchView('expanded');};
+$('story-window-height').oninput=()=>{
+  const value=Number($('story-window-height').value);
+  if(!Number.isFinite(value)||value<1||value>100)return;
+  windowHeight=value;stretchView('line');
+  try{localStorage.setItem(heightStorageKey,String(value));}catch{}
+};
+$('show-color').onclick=()=>{
+  if(!api)return;
+  showColor=!showColor;api.story.setColoring(showColor);syncDisplayControls();showControls();
+};
+document.addEventListener('pointerdown',event=>{
+  if(!$('height-panel').contains(event.target)&&!$('stretch-height').contains(event.target))closeHeightPanel();
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!$('height-panel').hidden){closeHeightPanel();$('stretch-height').focus();}
+});
 function chooseObserver(){
   if(!api)return;
   clearSceneFade();setPlaying(false);setView(90);api.story.beginViewpoint();

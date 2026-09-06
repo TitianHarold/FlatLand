@@ -33,6 +33,16 @@
       <button id="view-resident" type="button" aria-label="2D 居民视角" title="2D 居民视角" aria-pressed="false" disabled>2D</button>
       <output id="view-angle-value" for="view-angle">90°</output>
       <button id="choose-observer" class="icon-button" type="button" aria-label="选择观察点" title="选择观察点" disabled><img id="observer-icon" src="./icons/crosshair.svg" alt=""></button>
+      <div class="display-controls" role="group" aria-label="画面显示">
+        <button id="stretch-height" type="button" aria-label="按百分比拉伸，调整画面高度" title="按百分比拉伸" aria-controls="height-panel" aria-expanded="false" aria-pressed="false" disabled>1%</button>
+        <button id="stretch-full" type="button" aria-label="上下拉满" title="上下拉满" aria-pressed="false" disabled>拉满</button>
+        <button id="show-color" type="button" aria-label="显示染色" title="显示染色" aria-pressed="true" disabled>显色</button>
+      </div>
+      <div id="height-panel" hidden>
+        <label for="story-window-height">画面高度</label>
+        <input id="story-window-height" type="range" min="1" max="100" step="1" value="1" disabled>
+        <output id="story-window-height-value" for="story-window-height">1%</output>
+      </div>
     </aside>
     <p id="view-status" role="status"></p>
     <section class="act-text" aria-labelledby="act-title"><span id="act-number" hidden></span><h2 id="act-title"></h2><p id="act-body"></p></section>

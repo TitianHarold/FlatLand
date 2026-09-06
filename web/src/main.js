@@ -659,7 +659,11 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 $('loading').remove();if(!scripted)container.focus({preventScroll:true});requestAnimationFrame(animate);
-let storyScript,storyFrame,storyColoring;
+let storyScript,storyFrame,storyColoring,storyColorVisible=true;
+function updateStoryColoring(){
+  const coloring=storyColorVisible&&(storyFrame.coloring??storyColoring);
+  if(rules.coloring!==coloring){rules.coloring=coloring;lightRevision++;}
+}
 function fitStoryAct(index){
   const act=storyScript.acts[index],end=act.start+act.duration;
   overviewBounds.makeEmpty();
@@ -691,8 +695,7 @@ function seekStory(time){
     const {position:[x,y],angle}=storyFrame.observer;
     sim.player.body.setTranslation({x,y},true);sim.player.body.setRotation(angle*Math.PI/180,true);
   }
-  const coloring=storyFrame.coloring??storyColoring;
-  if(rules.coloring!==coloring){rules.coloring=coloring;lightRevision++;}
+  updateStoryColoring();
   for(const e of sim.entities){
     const mesh=entityMeshes.get(e.id);
     if(e.storyId&&mesh&&mesh.userData.storyPaint!==e.edgeColors.join(',')){updateMeshPaint(mesh,e);mesh.userData.storyPaint=e.edgeColors.join(',');}
@@ -717,6 +720,7 @@ connectStudio('world',{
       return {title:next.title,duration:next.duration};
     },
     seek:seekStory,
+    setColoring(value){storyColorVisible=Boolean(value);updateStoryColoring();},
     beginViewpoint(){setPerspective(0);perspective=0;},
     observeAt(x,y){
       if(![x,y].every(v=>Number.isFinite(v)&&v>=0&&v<=1))throw new Error('请在画面内选择观察点');
@@ -751,5 +755,5 @@ connectStudio('world',{
     mapLocked:!mapFollowsHeading,lineOnly,stretch,shapeHeight,windowHeight:flatWindow.value.y*100,windowBlend:flatWindow.value.x,planeHeight:PLANE_HEIGHT,geometryBottom:entityMeshes.get(sim.player.id)?.position.z,geometryHeight:entityMeshes.get(sim.player.id)?.scale.z,wallCenter:wallMeshes[0]?.position.z,wallHeight:wallMeshes[0]?.scale.z,cameraFov:camera.fov,cameraAspect:camera.aspect,renderedView:'world',renderCalls:renderer.info.render.calls,renderTriangles:renderer.info.render.triangles,renderPoints:renderer.info.render.points,observerVisible:Boolean(entityMeshes.get(sim.player.id)?.visible),population:sim.entities.filter(e=>e.state!=='dead').length,wandering:sim.wandering,
     deathEffects:{active:[...entityMeshes.values()].filter(m=>m.userData.death).length,visible:[...entityMeshes.values()].filter(m=>m.userData.deathSeen&&m.visible).length},
     optics:{displayEnhancement:rules.contour>0&&rules.detailGain>0,detailGain:rules.detailGain,detailStyle:rules.detailStyle??'sharp',visionEffect:rules.visionEffect,scatterDistance:rules.scatterDistance,scatterCurve:rules.scatterCurve,exposure:rules.exposure,fog:rules.fog,attenuationMode:rules.attenuationMode,attenuationCurve:rules.attenuationCurve,attenuationDistance:rules.attenuationDistance,attenuationFloor:rules.attenuationFloor,residentEmission:rules.materials.resident.emission,houseEmission:rules.materials.house.emission},
-    paint:PAINT_STYLES[rules.paintStyle],interaction:sim.player.interaction,playerState:sim.player.state}),
+    coloring:rules.coloring,paint:PAINT_STYLES[rules.paintStyle],interaction:sim.player.interaction,playerState:sim.player.state}),
 });
